@@ -401,7 +401,7 @@
     carInfo.set_car_model("Mazda");
     carInfo.set_car_year("2016");
     carInfo.set_car_serial("0001");
-    carInfo.set_driver_pos(true);
+    carInfo.set_driver_pos(callbacks.GetIsRightHandWheel());
     carInfo.set_headunit_make("Mazda");
     carInfo.set_headunit_model("Connect");
     carInfo.set_sw_build("SWB1");
@@ -473,7 +473,7 @@
       videoConfig->set_frame_rate(HU::ChannelDescriptor::OutputStreamChannel::VideoConfig::VIDEO_FPS_30);
       videoConfig->set_margin_width(0);
       videoConfig->set_margin_height(0);
-      videoConfig->set_dpi(140);
+      videoConfig->set_dpi(132);
       inner->set_available_while_in_call(true);
 
       callbacks.CustomizeOutputChannel(AA_CH_VID, *inner);
@@ -1515,6 +1515,7 @@
     {
       uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(temp_assembly_buffer->data()));
 
+      //loge ("PROCESSING MESSAGE");
       ret = iaap_msg_process (chan, msg_type, &(*temp_assembly_buffer)[2], buf_len - 2);          // Decrypt & Process 1 received encrypted message
       if (ret < 0 && iaap_state != hu_STATE_STOPPED) {                                                    // If error...
         loge ("Error iaap_msg_process() ret: %d  ", ret);
