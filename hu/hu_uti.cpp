@@ -100,9 +100,13 @@ int hu_log (int prio, const char * tag, const char * func, const char * fmt, ...
   int len = vsnprintf (log_line, sizeof (log_line), fmt, aq);
 
   //Time doesn't work on CMU anyway, always says 1970
-  time_t timestamp;
-  time(&timestamp);
-  printf ("%d %s: %s: %s : %s\n", timestamp, prio_get (prio), tag, func, log_line);
+  //time_t timestamp;
+  //time(&timestamp);
+
+  struct timeval tp;
+  gettimeofday(&tp, NULL);
+
+  printf ("%d %s: %s: %s : %s\n", (tp.tv_sec * 1000000 + tp.tv_usec) /*timestamp*/, prio_get (prio), tag, func, log_line);
 
   va_end(aq);
 #endif

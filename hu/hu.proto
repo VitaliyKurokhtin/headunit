@@ -441,7 +441,7 @@ message ServiceDiscoveryResponse
     required string car_model = 3;
     required string car_year = 4;
     required string car_serial = 5;
-    required bool driver_pos = 6;
+    required bool driver_pos = 6; // false for left-hand steering wheel, true for right-hand steering wheel
     required string headunit_make = 7;
     required string headunit_model = 8;
     required string sw_build = 9;

@@ -125,6 +125,23 @@ std::string MazdaEventCallbacks::GetCarBluetoothAddress()
     return get_bluetooth_mac_address();
 }
 
+bool MazdaEventCallbacks::GetIsRightHandWheel()
+{
+    /*
+    uint32_t location = 0;
+    run_on_main_thread([this, &location](){
+        location = videoMgrClient->GetSteeringWheelLocation();
+        loge("XXX: GetSteeringWheelLocation %d", location);
+        return false;
+    });
+    loge("XXX2: GetSteeringWheelLocation %d", location);
+    */
+    uint32_t location = videoMgrClient->GetSteeringWheelLocation();
+    // 1 seems to indicate left-hand steering wheel
+    logv("GetSteeringWheelLocation response: %d", location);
+    return location != 1;
+}
+
 void MazdaEventCallbacks::takeVideoFocus() {
     run_on_main_thread([this](){
         videoMgrClient->requestVideoFocus(VIDEO_FOCUS_REQUESTOR::HEADUNIT);
