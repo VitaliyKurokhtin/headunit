@@ -42,10 +42,10 @@ uint8_t turns[][3] = {
   {0,0,0}, // TURN_ROUNDABOUT_EXIT
   {0,0,0}, //TURN_ROUNDABOUT_ENTER_AND_EXIT (Will have to handle seperatly)
   {NaviTurns::STRAIGHT,NaviTurns::STRAIGHT,NaviTurns::STRAIGHT}, //TURN_STRAIGHT
-  {0,0,0}, //unused?
+  {NaviTurns::NO_CAR, NaviTurns::NO_CAR, NaviTurns::NO_CAR}, //unused?
   {0,0,0}, //TURN_FERRY_BOAT
   {0,0,0}, //TURN_FERRY_TRAIN
-  {0,0,0}, //unused??
+  {NaviTurns::CAR, NaviTurns::CAR, NaviTurns::CAR}, //unused??
   {NaviTurns::DESTINATION_LEFT, NaviTurns::DESTINATION_RIGHT, NaviTurns::DESTINATION} //TURN_DESTINATION
 };
 
