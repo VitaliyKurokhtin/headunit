@@ -27,9 +27,13 @@ struct NaviData {
   int32_t distance; // distance * 10, encoded like that to store one digit after decimal dot in int type
   HudDistanceUnit distance_unit; 
   int32_t time_until;
-  uint8_t previous_msg;
-  uint8_t changed;
+  uint8_t sync_bit;
+  uint8_t distance_changed;
+  uint8_t event_changed;
 };
+
+extern NaviData *navi_data;
+extern std::mutex hudmutex;
 
 enum NaviTurns: uint32_t {
   STRAIGHT = 1,

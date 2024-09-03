@@ -666,9 +666,6 @@ void AudioManagerClient::Notify(const std::string &signalName, const std::string
     }
 }
 
-extern NaviData *navi_data;
-extern std::mutex hudmutex;
-
 void MazdaEventCallbacks::HandleNaviStatus(IHUConnectionThreadInterface& stream, const HU::NAVMessagesStatus &request){
   if (request.status() == HU::NAVMessagesStatus_STATUS_STOP) {
     hudmutex.lock();
@@ -677,10 +674,11 @@ void MazdaEventCallbacks::HandleNaviStatus(IHUConnectionThreadInterface& stream,
     navi_data->turn_side = 0;
     navi_data->turn_number = -1;
     navi_data->turn_angle = -1;
-    navi_data->changed = 1;
-    navi_data->previous_msg = navi_data->previous_msg + 1;
-    if (navi_data->previous_msg == 8){
-      navi_data->previous_msg = 1;
+    navi_data->distance_changed = 1;
+    navi_data->event_changed = 1;
+    navi_data->sync_bit = navi_data->sync_bit + 1;
+    if (navi_data->sync_bit == 8){
+      navi_data->sync_bit = 1;
     }
     hudmutex.unlock();
   }
@@ -699,32 +697,30 @@ void MazdaEventCallbacks::HandleNaviTurn(IHUConnectionThreadInterface& stream, c
   logUnknownFields(request.unknown_fields());
 
   hudmutex.lock();
-  int changed = 0;
   if (navi_data->event_name != request.event_name()) {
     navi_data->event_name = request.event_name();
-    changed = 1;
+    navi_data->event_changed = 1;
   }
   if (navi_data->turn_event != request.turn_event()) {
     navi_data->turn_event = request.turn_event();
-    changed = 1;
+    navi_data->event_changed = 1;
   }
   if (navi_data->turn_side != request.turn_side()) {
     navi_data->turn_side = request.turn_side();
-    changed = 1;
+    navi_data->event_changed = 1;
   }
   if (navi_data->turn_number != request.turn_number()) {
     navi_data->turn_number = request.turn_number();
-    changed = 1;
+    navi_data->event_changed = 1;
   }
   if (navi_data->turn_angle != request.turn_angle()) {
     navi_data->turn_angle = request.turn_angle();
-    changed = 1;
+    navi_data->event_changed = 1;
   }
-  if (changed) {
-    navi_data->changed = 1;
-    navi_data->previous_msg = navi_data->previous_msg+1;
-    if (navi_data->previous_msg == 8) {
-      navi_data->previous_msg = 1;
+  if (navi_data->event_changed) {
+    navi_data->sync_bit = navi_data->sync_bit+1;
+    if (navi_data->sync_bit == 8) {
+      navi_data->sync_bit = 1;
     }
   }
   hudmutex.unlock();
@@ -774,20 +770,20 @@ void MazdaEventCallbacks::HandleNaviTurnDistance(IHUConnectionThreadInterface& s
   if (now_distance != navi_data->distance || now_unit != navi_data->distance_unit) {
     navi_data->distance_unit = now_unit;
     navi_data->distance = now_distance;
-    navi_data->changed = 1;
-    navi_data->previous_msg = navi_data->previous_msg+1;
-    if (navi_data->previous_msg == 8) {
-      navi_data->previous_msg = 1;
-    }
+    navi_data->distance_changed = 1;
+    //navi_data->previous_msg = navi_data->previous_msg+1;
+    //if (navi_data->previous_msg == 8) {
+    //  navi_data->previous_msg = 1;
+    //}
   }
 
   if (navi_data->time_until != request.time_until()) {
     navi_data->time_until = request.time_until();
-    navi_data->changed = 1;
-    navi_data->previous_msg = navi_data->previous_msg+1;
-    if (navi_data->previous_msg == 8) {
-      navi_data->previous_msg = 1;
-    }
+    navi_data->distance_changed = 1;
+    //navi_data->previous_msg = navi_data->previous_msg+1;
+    //if (navi_data->previous_msg == 8) {
+    //  navi_data->previous_msg = 1;
+    //}
   }
 
   hudmutex.unlock();

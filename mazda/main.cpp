@@ -242,7 +242,6 @@ int main (int argc, char *argv[])
 
             std::condition_variable quitcv;
             std::mutex quitmutex;
-            std::mutex hudmutex;
 
             std::thread nm_thread([&quitcv, &quitmutex](){ nightmode_thread_func(quitcv, quitmutex); } );
             std::thread gp_thread([&quitcv, &quitmutex](){ gps_thread_func(quitcv, quitmutex); } );

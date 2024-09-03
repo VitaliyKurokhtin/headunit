@@ -63,42 +63,56 @@ void hud_thread_func(std::condition_variable& quitcv, std::mutex& quitmutex, std
     // if (hud_client == NULL) {
     //   return;
     // }
+    
     hudmutex.lock();
+    uint8_t set_hudDisplayMsg = navi_data->event_changed || navi_data->distance_changed;
+    ::DBus::Struct< uint32_t, uint16_t, uint8_t, uint16_t, uint8_t, uint8_t > hudDisplayMsg;
+    uint8_t set_hudDisplayMsg2 = navi_data->event_changed;
+    ::DBus::Struct< std::string, uint8_t > guidancePointData;
 
-    uint32_t diricon;
-    if (navi_data->turn_event == 13) {
-      diricon = roundabout(navi_data->turn_angle, navi_data->turn_side - 1);
-    } else {
-      int32_t turn_side = navi_data->turn_side - 1; //Google starts at 1 for some reason...
-      diricon = turns[navi_data->turn_event][turn_side];
+    if (set_hudDisplayMsg) {
+      uint32_t diricon;
+      if (navi_data->turn_event == 13) {
+        diricon = roundabout(navi_data->turn_angle, navi_data->turn_side - 1);
+      } else {
+        int32_t turn_side = navi_data->turn_side - 1; //Google starts at 1 for some reason...
+        diricon = turns[navi_data->turn_event][turn_side];
+      }
+
+      hudDisplayMsg._1 = diricon;
+      hudDisplayMsg._2 = navi_data->distance;// distance;
+      hudDisplayMsg._3 = navi_data->distance_unit;
+      hudDisplayMsg._4 = 0; //Speed limit (Not Used)
+      hudDisplayMsg._5 = 0; //Speed limit units (Not used)
+      hudDisplayMsg._6 = navi_data->sync_bit;
+    }
+    
+    if (set_hudDisplayMsg2) {
+      guidancePointData._1 = navi_data->event_name;
+      guidancePointData._2 = navi_data->sync_bit;
     }
 
-    ::DBus::Struct< uint32_t, uint16_t, uint8_t, uint16_t, uint8_t, uint8_t > hudDisplayMsg;
-    hudDisplayMsg._1 = diricon;
-    hudDisplayMsg._2 = navi_data->distance;// distance;
-    hudDisplayMsg._3 = navi_data->distance_unit;
-    hudDisplayMsg._4 = 0; //Speed limit (Not Used)
-    hudDisplayMsg._5 = 0; //Speed limit units (Not used)
-    hudDisplayMsg._6 = navi_data->previous_msg;
+    navi_data->event_changed = 0;
+    navi_data->distance_changed = 0;
+    hudmutex.unlock();
 
-    ::DBus::Struct< std::string, uint8_t > guidancePointData;
-    guidancePointData._1 = navi_data->event_name;
-    guidancePointData._2 = navi_data->previous_msg;
-
-    if(navi_data->changed){
+    if (set_hudDisplayMsg || set_hudDisplayMsg2) {
       try
       {
-        vbsnavi_client->SetHUDDisplayMsgReq(hudDisplayMsg);
-        tmc_client->SetHUD_Display_Msg2(guidancePointData);
+        if (set_hudDisplayMsg) {
+          vbsnavi_client->SetHUDDisplayMsgReq(hudDisplayMsg);
+        }
+        if (set_hudDisplayMsg2) {
+          tmc_client->SetHUD_Display_Msg2(guidancePointData);
+        }
       }
       catch(DBus::Error& error)
       {
         loge("DBUS: hud_send failed %s: %s\n", error.name(), error.message());
         return;
       }
-	  navi_data->changed = 0;
     }
-    hudmutex.unlock();
+
     {
         std::unique_lock<std::mutex> lk(quitmutex);
         if (quitcv.wait_for(lk, std::chrono::milliseconds(1000)) == std::cv_status::no_timeout)
