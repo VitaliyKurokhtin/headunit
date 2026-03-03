@@ -53,6 +53,10 @@ int MazdaEventCallbacks::MediaStop(int chan) {
     if (chan == AA_CH_MIC) {
         micInput.Stop();
         printf("SHAI1 : Mic Stopped\n");
+    } else if (chan == AA_CH_AUD) {
+        audioOutput->FlushAUD();
+    } else if (chan == AA_CH_AU1) {
+        audioOutput->FlushAU1();
     }
     return 0;
 }
@@ -184,7 +188,22 @@ void MazdaEventCallbacks::AudioFocusHappend(AudioManagerClient::FocusType type) 
             response.set_focus_type(HU::AudioFocusResponse::AUDIO_FOCUS_STATE_GAIN_TRANSIENT);
             break;
     }
-    g_hu->hu_queue_command([response](IHUConnectionThreadInterface & s) {
+    AudioOutput* audio = audioOutput.get();
+    g_hu->hu_queue_command([response, audio, type](IHUConnectionThreadInterface & s) {
+        if (audio) {
+            switch(type) {
+                case AudioManagerClient::FocusType::NONE:
+                    audio->FlushAUD();
+                    audio->FlushAU1();
+                    break;
+                case AudioManagerClient::FocusType::TRANSIENT:
+                    audio->FlushAUD();
+                    break;
+                case AudioManagerClient::FocusType::PERMANENT:
+                    audio->FlushAU1();
+                    break;
+            }
+        }
         s.hu_aap_enc_send_message(0, AA_CH_CTR, HU_PROTOCOL_MESSAGE::AudioFocusResponse, response);
     });
     logd("Sent channel %i HU_PROTOCOL_MESSAGE::AudioFocusResponse %s\n", AA_CH_CTR,  HU::AudioFocusResponse::AUDIO_FOCUS_STATE_Name(response.focus_type()).c_str());

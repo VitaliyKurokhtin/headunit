@@ -8,7 +8,7 @@ AudioOutput::AudioOutput(const char *outDev)
     if ((err = snd_pcm_open(&aud_handle, outDev, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
         loge("Playback open error: %s\n", snd_strerror(err));
     }
-    if ((err = snd_pcm_set_params(aud_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2,48000, 1, 1000000)) < 0) {   /* 1.0sec */
+    if ((err = snd_pcm_set_params(aud_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2,48000, 1, 200000)) < 0) {   /* 0.2sec */
         loge("Playback open error: %s\n", snd_strerror(err));
     }
 
@@ -19,7 +19,7 @@ AudioOutput::AudioOutput(const char *outDev)
     if ((err = snd_pcm_open(&au1_handle, outDev, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
         loge("Playback open error: %s\n", snd_strerror(err));
     }
-    if ((err = snd_pcm_set_params(au1_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 16000, 1, 1000000)) < 0) {   /* 1.0sec */
+    if ((err = snd_pcm_set_params(au1_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 16000, 1, 200000)) < 0) {   /* 0.2sec */
         loge("Playback open error: %s\n", snd_strerror(err));
     }
 
@@ -65,6 +65,33 @@ void AudioOutput::MediaPacket(snd_pcm_t *pcm, const byte *buf, int len)
     }
     if (frames >= 0 && frames < framecount) {
         loge("Short write (expected %i, wrote %i)\n", (int)framecount, (int)frames);
+    }
+}
+
+static void flush_pcm(snd_pcm_t *pcm)
+{
+    int err;
+    if ((err = snd_pcm_drop(pcm)) < 0) {
+        loge("snd_pcm_drop error: %s\n", snd_strerror(err));
+    }
+    if ((err = snd_pcm_prepare(pcm)) < 0) {
+        loge("snd_pcm_prepare error: %s\n", snd_strerror(err));
+    }
+}
+
+void AudioOutput::FlushAUD()
+{
+    if (aud_handle) {
+        logd("Flushing AUD buffer\n");
+        flush_pcm(aud_handle);
+    }
+}
+
+void AudioOutput::FlushAU1()
+{
+    if (au1_handle) {
+        logd("Flushing AU1 buffer\n");
+        flush_pcm(au1_handle);
     }
 }
 

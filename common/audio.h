@@ -20,6 +20,8 @@ public:
 
     void MediaPacketAUD(uint64_t timestamp, const byte * buf, int len);
     void MediaPacketAU1(uint64_t timestamp, const byte * buf, int len);
+    void FlushAUD();
+    void FlushAU1();
 };
 
 class MicInput
