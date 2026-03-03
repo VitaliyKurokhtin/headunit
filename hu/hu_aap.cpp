@@ -726,6 +726,19 @@
   }
 
 
+  void HUServer::build_media_ack(int chan) {
+    HU::MediaAck mediaAck;
+    mediaAck.set_session(channel_session_id[chan]);
+    mediaAck.set_value(1);
+
+    int messageSize = mediaAck.ByteSize();
+    pre_serialized_media_ack[chan].resize(messageSize + 2);
+    uint16_t* p = reinterpret_cast<uint16_t*>(pre_serialized_media_ack[chan].data());
+    *p = htobe16(static_cast<uint16_t>(HU_MEDIA_CHANNEL_MESSAGE::MediaAck));
+    mediaAck.SerializeToArray(p + 1, messageSize);
+  }
+
+
   int HUServer::hu_handle_MediaStartRequest(int chan, byte * buf, int len) {                  // sr:  00000000 00 11 08 01      Microphone voice search usage     sr:  00000000 00 11 08 02
 
     HU::MediaStartRequest request;
@@ -735,6 +748,7 @@
       logd ("MediaStartRequest: %d", request.session());
 
     channel_session_id[chan] = request.session();
+    build_media_ack(chan);
     return callbacks.MediaStart(chan);
    }
 
@@ -820,11 +834,8 @@
     }
 
 
-    HU::MediaAck mediaAck;
-    mediaAck.set_session(channel_session_id[chan]);
-    mediaAck.set_value(1);
-
-    return hu_aap_enc_send_message(0, chan, HU_MEDIA_CHANNEL_MESSAGE::MediaAck, mediaAck);
+    return hu_aap_enc_send(0, chan, pre_serialized_media_ack[chan].data(),
+                           pre_serialized_media_ack[chan].size(), 0);
   }
 
   int HUServer::hu_handle_MediaData(int chan, byte * buf, int len) {
@@ -836,11 +847,8 @@
     }
 
 
-    HU::MediaAck mediaAck;
-    mediaAck.set_session(channel_session_id[chan]);
-    mediaAck.set_value(1);
-
-    return hu_aap_enc_send_message(0, chan, HU_MEDIA_CHANNEL_MESSAGE::MediaAck, mediaAck);
+    return hu_aap_enc_send(0, chan, pre_serialized_media_ack[chan].data(),
+                           pre_serialized_media_ack[chan].size(), 0);
   }
 
   int HUServer::hu_handle_PhoneStatus(int chan, byte * buf, int len) {

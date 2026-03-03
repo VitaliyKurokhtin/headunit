@@ -206,6 +206,8 @@ protected:
   std::map<int, std::vector<uint8_t>*> channel_assembly_buffers;
   byte enc_buf[MAX_FRAME_SIZE] = {0};
   int32_t channel_session_id[AA_CH_MAX] = {0};
+  std::vector<uint8_t> pre_serialized_media_ack[AA_CH_MAX];
+  void build_media_ack(int chan);
 
   std::thread hu_thread;
   int command_read_fd = -1;
