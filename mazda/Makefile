@@ -13,11 +13,11 @@ SYSROOT=$(M3TOOLCHAIN)/arm-cortexa9_neon-linux-gnueabi/sysroot
 
 INCLUDES=$(shell ./pkg-config-wrapper $(SYSROOT) --cflags gstreamer-0.10 gstreamer-app-0.10 gstreamer-video-0.10 dbus-1 libusb-1.0  libcrypto openssl glib-2.0 dbus-c++-1 dbus-c++-glib-1 libudev alsa) -I$(TOP)/hu -I$(TOP)/common -I$(TOP)/hu/generated.arm  -I$(PROTOTOOLCHAIN)/include -I$(LIBUNWIND)/include
 
-CFLAGS=-O3 -g -rdynamic -pthread --sysroot=$(SYSROOT) -DCMU=1 -D__STDC_FORMAT_MACROS -march=armv7-a -mtune=cortex-a9 -mfpu=neon
+CFLAGS=-O3 -g -rdynamic -pthread --sysroot=$(SYSROOT) -DCMU=1 -D__STDC_FORMAT_MACROS -march=armv7-a -mtune=cortex-a9 -mfpu=neon -flto -ffunction-sections -fdata-sections
 CXXFLAGS=$(CFLAGS) -std=c++11 -static-libstdc++ -D_GLIBCXX_USE_C99
 
 #static link  dbus-c++-glib-1 since it's not on the car
-LFLAGS= --sysroot=$(SYSROOT) -g -rdynamic -pthread -ldl -static-libstdc++ $(shell ./pkg-config-wrapper $(SYSROOT) --libs gstreamer-0.10 gstreamer-app-0.10 gstreamer-video-0.10 dbus-1 libusb-1.0 libcrypto openssl glib-2.0 dbus-c++-1 libudev alsa) -l:libdbus-c++-glib-1.a -L$(PROTOTOOLCHAIN)/lib -lprotobuf -L$(LIBUNWIND)/lib -lunwind
+LFLAGS= --sysroot=$(SYSROOT) -g -rdynamic -pthread -ldl -static-libstdc++ -flto -Wl,--gc-sections $(shell ./pkg-config-wrapper $(SYSROOT) --libs gstreamer-0.10 gstreamer-app-0.10 gstreamer-video-0.10 dbus-1 libusb-1.0 libcrypto openssl glib-2.0 dbus-c++-1 libudev alsa) -l:libdbus-c++-glib-1.a -L$(PROTOTOOLCHAIN)/lib -lprotobuf -L$(LIBUNWIND)/lib -lunwind
 
 #headunit binary
 SRCS = $(TOP)/hu/hu_aad.cpp
@@ -61,7 +61,7 @@ proto: $(TOP)/hu/generated.arm/hu.pb.cc
 dbusxx: dbus/generated_cmu.h
 
 $(APP): $(OBJS)
-	$(CXX) -MD -g -o $(APP) $(OBJS) $(LFLAGS)
+	$(CXX) -MD -g -flto -o $(APP) $(OBJS) $(LFLAGS)
 
 $(TOP)/hu/generated.arm/hu.pb.cc $(TOP)/hu/generated.arm/hu.pb.h: $(TOP)/hu/hu.proto
 	$(PROTOTOOLCHAIN)/bin/protoc $< --proto_path=$(TOP)/hu/ --cpp_out=$(TOP)/hu/generated.arm/
