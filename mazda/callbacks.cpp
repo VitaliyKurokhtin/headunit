@@ -650,7 +650,8 @@ void AudioManagerClient::Notify(const std::string &signalName, const std::string
                 FocusType newFocusType = currentFocus;
                 if (newFocus != "gained")
                 {
-                    if (eventSessionID == aaSessionID || eventSessionID == aaTransientSessionID)
+                    if ((eventSessionID == aaTransientSessionID && currentFocus == FocusType::TRANSIENT)
+                        || (eventSessionID == aaSessionID && currentFocus == FocusType::PERMANENT))
                     {
                         newFocusType = FocusType::NONE;
                     }
