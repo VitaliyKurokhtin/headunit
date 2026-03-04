@@ -687,7 +687,7 @@ void AudioManagerClient::Notify(const std::string &signalName, const std::string
 
 void MazdaEventCallbacks::HandleNaviStatus(IHUConnectionThreadInterface& stream, const HU::NAVMessagesStatus &request){
   if (request.status() == HU::NAVMessagesStatus_STATUS_STOP) {
-    hudmutex.lock();
+    if (!hudmutex.try_lock()) return;
     navi_data->event_name = "";
     navi_data->turn_event = 0;
     navi_data->turn_side = 0;
@@ -715,7 +715,7 @@ void MazdaEventCallbacks::HandleNaviTurn(IHUConnectionThreadInterface& stream, c
   );
   logUnknownFields(request.unknown_fields());
 
-  hudmutex.lock();
+  if (!hudmutex.try_lock()) return;
   if (navi_data->event_name != request.event_name()) {
     navi_data->event_name = request.event_name();
     navi_data->event_changed = 1;
@@ -746,7 +746,7 @@ void MazdaEventCallbacks::HandleNaviTurn(IHUConnectionThreadInterface& stream, c
 }
 
 void MazdaEventCallbacks::HandleNaviTurnDistance(IHUConnectionThreadInterface& stream, const HU::NAVDistanceMessage &request) {
-  hudmutex.lock();
+  if (!hudmutex.try_lock()) return;
   int now_distance;
   HudDistanceUnit now_unit;
   switch (request.display_distance_unit()) {
