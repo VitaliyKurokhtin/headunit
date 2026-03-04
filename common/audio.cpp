@@ -195,6 +195,7 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
             {
                 delete [] tempBuffer;
                 canceled = true;
+                continue;
             }
         }
         ssize_t bytesRead = snd_pcm_frames_to_bytes(mic_handle, frames);
