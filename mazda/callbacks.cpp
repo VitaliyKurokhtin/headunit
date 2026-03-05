@@ -190,19 +190,9 @@ void MazdaEventCallbacks::AudioFocusHappend(AudioManagerClient::FocusType type) 
     }
     AudioOutput* audio = audioOutput.get();
     g_hu->hu_queue_command([response, audio, type](IHUConnectionThreadInterface & s) {
-        if (audio) {
-            switch(type) {
-                case AudioManagerClient::FocusType::NONE:
-                    audio->FlushAUD();
-                    audio->FlushAU1();
-                    break;
-                case AudioManagerClient::FocusType::TRANSIENT:
-                    audio->FlushAUD();
-                    break;
-                case AudioManagerClient::FocusType::PERMANENT:
-                    audio->FlushAU1();
-                    break;
-            }
+        if (audio && type == AudioManagerClient::FocusType::NONE) {
+            audio->FlushAUD();
+            audio->FlushAU1();
         }
         s.hu_aap_enc_send_message(0, AA_CH_CTR, HU_PROTOCOL_MESSAGE::AudioFocusResponse, response);
     });
@@ -650,7 +640,8 @@ void AudioManagerClient::Notify(const std::string &signalName, const std::string
                 FocusType newFocusType = currentFocus;
                 if (newFocus != "gained")
                 {
-                    if (eventSessionID == aaSessionID || eventSessionID == aaTransientSessionID)
+                    if ((eventSessionID == aaTransientSessionID && currentFocus == FocusType::TRANSIENT)
+                        || (eventSessionID == aaSessionID && currentFocus == FocusType::PERMANENT))
                     {
                         newFocusType = FocusType::NONE;
                     }

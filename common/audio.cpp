@@ -70,6 +70,12 @@ void AudioOutput::MediaPacket(snd_pcm_t *pcm, const byte *buf, int len)
 
 static void flush_pcm(snd_pcm_t *pcm)
 {
+    if (snd_pcm_state(pcm) == SND_PCM_STATE_PREPARED) {
+        /* Already in a clean, ready state — nothing to flush. Calling
+         * snd_pcm_drop on a never-started PREPARED handle can corrupt it
+         * on some ALSA implementations, so skip the drop entirely. */
+        return;
+    }
     int err;
     if ((err = snd_pcm_drop(pcm)) < 0) {
         loge("snd_pcm_drop error: %s\n", snd_strerror(err));
