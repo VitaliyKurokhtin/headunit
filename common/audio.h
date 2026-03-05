@@ -4,16 +4,36 @@
 #include <stdio.h>
 #include <asoundlib.h>
 #include <thread>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <vector>
 
 #include "hu_uti.h"
 #include "hu_aap.h"
 
 class AudioOutput
 {
+    struct AudioChannel {
+        std::queue<std::vector<uint8_t>> queue;
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool flush_requested = false;
+    };
+
     snd_pcm_t* aud_handle = nullptr;
     snd_pcm_t* au1_handle = nullptr;
 
-    void MediaPacket(snd_pcm_t* pcm, const byte * buf, int len);
+    AudioChannel aud_channel;
+    AudioChannel au1_channel;
+
+    std::atomic<bool> quit_flag{false};
+
+    std::thread aud_writer_thread;
+    std::thread au1_writer_thread;
+
+    void WriterThread(snd_pcm_t* handle, AudioChannel& channel, const char* name);
 public:
     AudioOutput(const char* outDev = "default");
     ~AudioOutput();
