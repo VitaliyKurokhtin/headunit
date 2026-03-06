@@ -34,6 +34,7 @@ class AudioOutput
     std::thread au1_writer_thread;
 
     void WriterThread(snd_pcm_t* handle, AudioChannel& channel, const char* name);
+    std::vector<uint8_t> MonoToStereoLeft(const byte *buf, int len);
 public:
     AudioOutput(const char* outDev = "default");
     ~AudioOutput();

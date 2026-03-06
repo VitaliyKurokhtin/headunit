@@ -19,7 +19,7 @@ AudioOutput::AudioOutput(const char *outDev)
     if ((err = snd_pcm_open(&au1_handle, outDev, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
         loge("Playback open error: %s\n", snd_strerror(err));
     }
-    if ((err = snd_pcm_set_params(au1_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 16000, 1, 200000)) < 0) {   /* 0.2sec */
+    if ((err = snd_pcm_set_params(au1_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2, 16000, 1, 200000)) < 0) {   /* 0.2sec */
         loge("Playback open error: %s\n", snd_strerror(err));
     }
 
@@ -105,12 +105,27 @@ void AudioOutput::MediaPacketAUD(uint64_t timestamp, const byte *buf, int len)
     aud_channel.cv.notify_one();
 }
 
+std::vector<uint8_t> AudioOutput::MonoToStereoLeft(const byte *buf, int len)
+{
+    int sampleCount = len / sizeof(int16_t);
+    std::vector<uint8_t> stereoData(sampleCount * 2 * sizeof(int16_t));
+    const int16_t* monoSamples = reinterpret_cast<const int16_t*>(buf);
+    int16_t* stereoSamples = reinterpret_cast<int16_t*>(stereoData.data());
+    for (int i = 0; i < sampleCount; i++) {
+        stereoSamples[i * 2] = monoSamples[i];  // left
+        stereoSamples[i * 2 + 1] = 0;           // right (silent)
+    }
+    return stereoData;
+}
+
 void AudioOutput::MediaPacketAU1(uint64_t timestamp, const byte *buf, int len)
 {
     if (!au1_handle) return;
+
+    auto stereoData = MonoToStereoLeft(buf, len);
     {
         std::lock_guard<std::mutex> lk(au1_channel.mutex);
-        au1_channel.queue.emplace(buf, buf + len);
+        au1_channel.queue.push(std::move(stereoData));
     }
     au1_channel.cv.notify_one();
 }
