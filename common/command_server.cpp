@@ -61,6 +61,18 @@ CommandServer::CommandServer(ICommandServerCallbacks &callbacks)
 
         AddCORSHeaders(resp);
     });
+
+    server.post("/releaseVideoFocus", [&callbacks](WPP::Request& req, WPP::Response& resp)
+    {
+        resp.type = "application/json";
+        callbacks.ReleaseVideoFocus();
+        json result;
+        resp.body << std::setw(4) << result;
+
+        printf("Got /releaseVideoFocus call. response:\n%s\n", resp.body.str().c_str());
+
+        AddCORSHeaders(resp);
+    });
 }
 
 bool CommandServer::Start()

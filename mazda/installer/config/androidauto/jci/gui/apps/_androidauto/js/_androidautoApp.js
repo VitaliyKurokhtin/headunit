@@ -20,6 +20,8 @@ function _androidautoApp(uiaId)
 
 }
 
+var AA_FOCUS_POLL_INTERVAL_MS = 2000;
+
 
 /*********************************
  * App Init is standard function *
@@ -124,6 +126,9 @@ function AAlogPoll()
                     //put these back to what the JS code thinks they are just incase
                     utility.setRequiredSurfaces(framework._visibleSurfaces, true);
 
+                    // Navigate back to the car home screen now that AA video is no longer active
+                    framework.sendEventToMmui("common", "GoBack");
+
                     if (currentStatus.logPath != null)
                     {
                         var xhttp = new XMLHttpRequest();
@@ -164,7 +169,7 @@ function AAlogPoll()
                 else
                 {
                     //try again later
-                    window.setTimeout(AAlogPoll, 2000);
+                    window.setTimeout(AAlogPoll, AA_FOCUS_POLL_INTERVAL_MS);
                 }
             }
         });
@@ -186,11 +191,20 @@ _androidautoApp.prototype._StartContextReady = function ()
             if (currentStatus != null)
             {
                 AAdisplayVersion(currentStatus.headunitVersion);
-                if (!currentStatus.videoFocus && currentStatus.connected)
+                if (currentStatus.videoFocus)
+                {
+                    // Already have video focus (e.g. reconnect), start polling to detect focus loss
+                    window.setTimeout(AAlogPoll, AA_FOCUS_POLL_INTERVAL_MS);
+                }
+                else if (currentStatus.connected)
                 {
                     var takeFocus = function()
                     {
-                        AAcallCommandServer("POST", "takeVideoFocus", function(currentStatus){});
+                        AAcallCommandServer("POST", "takeVideoFocus", function(currentStatus)
+                        {
+                            // Start polling to detect when video focus is later released
+                            window.setTimeout(AAlogPoll, AA_FOCUS_POLL_INTERVAL_MS);
+                        });
                     };
 
                     //need to sleep a bit to make sure the pane switch is done otherwise it will blow out our focus change later
@@ -213,7 +227,8 @@ _androidautoApp.prototype._StartContextOut = function ()
 {
     try
     {
-        //nothing
+        // Release video focus on the headunit side when the user navigates away from this context
+        AAcallCommandServer("POST", "releaseVideoFocus", function(currentStatus){});
     }
     catch(err)
     {

@@ -327,6 +327,14 @@ void MazdaCommandServerCallbacks::TakeVideoFocus()
     }
 }
 
+void MazdaCommandServerCallbacks::ReleaseVideoFocus()
+{
+    if (eventCallbacks && eventCallbacks->connected)
+    {
+        eventCallbacks->releaseVideoFocus();
+    }
+}
+
 std::string MazdaCommandServerCallbacks::GetLogPath() const
 {
     return "/tmp/mnt/data/headunit.log";

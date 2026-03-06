@@ -161,6 +161,14 @@ void DesktopCommandServerCallbacks::TakeVideoFocus()
     }
 }
 
+void DesktopCommandServerCallbacks::ReleaseVideoFocus()
+{
+    if (eventCallbacks && eventCallbacks->connected)
+    {
+        eventCallbacks->VideoFocusHappened(false, VIDEO_FOCUS_REQUESTOR::HEADUNIT);
+    }
+}
+
 std::string DesktopCommandServerCallbacks::GetLogPath() const
 {
     //no log
