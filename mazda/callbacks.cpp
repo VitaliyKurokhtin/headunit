@@ -643,14 +643,30 @@ void AudioManagerClient::Notify(const std::string &signalName, const std::string
             {
                 if (waitingForFocusLostEvent && newFocus == "lost")
                 {
-                    previousSessionID = eventSessionID;
+                    // Only capture previousSessionID for sessions that are
+                    // NOT ours. When transitioning from TRANSIENT to PERMANENT,
+                    // the transient "lost" Notify may arrive after
+                    // waitingForFocusLostEvent is set, and we must not save
+                    // our own transient session as the "previous" app.
+                    if (eventSessionID != aaSessionID && eventSessionID != aaTransientSessionID)
+                    {
+                        previousSessionID = eventSessionID;
+                    }
                     waitingForFocusLostEvent = false;
                 }
 
                 FocusType newFocusType = currentFocus;
                 if (newFocus != "gained")
                 {
-                    if (eventSessionID == aaSessionID || eventSessionID == aaTransientSessionID)
+                    // Only transition to NONE if the "lost" event matches the
+                    // currently active focus type. A stale "lost" for a transient
+                    // session must not cancel a newly-acquired permanent focus
+                    // (and vice-versa).
+                    if (eventSessionID == aaSessionID && currentFocus == FocusType::PERMANENT)
+                    {
+                        newFocusType = FocusType::NONE;
+                    }
+                    else if (eventSessionID == aaTransientSessionID && currentFocus == FocusType::TRANSIENT)
                     {
                         newFocusType = FocusType::NONE;
                     }
