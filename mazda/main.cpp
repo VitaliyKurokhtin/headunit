@@ -112,9 +112,8 @@ static void gps_thread_func(std::condition_variable& quitcv, std::mutex& quitmut
 
             HU::SensorEvent sensorEvent;
             HU::SensorEvent::LocationData* location = sensorEvent.add_location_data();
-            //AA uses uS and the gps data just has seconds, just use the current time to get more precision so AA can
-            //interpolate better
-            location->set_timestamp(timestamp);
+            //AA uses uS, convert GPS UTC seconds to microseconds
+            location->set_timestamp(data.uTCtime * 1000000);
             location->set_latitude(static_cast<int32_t>(data.latitude * 1E7));
             location->set_longitude(static_cast<int32_t>(data.longitude * 1E7));
 
