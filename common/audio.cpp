@@ -82,6 +82,16 @@ void AudioOutput::WriterThread(snd_pcm_t* handle, AudioChannel& channel, const c
 
         // Write to ALSA outside the lock
         snd_pcm_sframes_t framecount = snd_pcm_bytes_to_frames(handle, packet.size());
+
+        // Check for accumulated latency and resync if needed
+        snd_pcm_sframes_t delay = 0;
+        if (snd_pcm_delay(handle, &delay) == 0 && delay > framecount * 4) {
+            logw("%s: latency drift detected (%ld frames buffered, threshold %ld), resyncing\n",
+                 name, (long)delay, (long)(framecount * 4));
+            snd_pcm_drop(handle);
+            snd_pcm_prepare(handle);
+        }
+
         snd_pcm_sframes_t frames = snd_pcm_writei(handle, packet.data(), framecount);
         if (frames < 0) {
             frames = snd_pcm_recover(handle, frames, 1);
