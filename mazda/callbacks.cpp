@@ -703,26 +703,25 @@ void AudioManagerClient::Notify(const std::string &signalName, const std::string
 
 void MazdaEventCallbacks::HandleNaviStatus(IHUConnectionThreadInterface& stream, const HU::NAVMessagesStatus &request){
   if (request.status() == HU::NAVMessagesStatus_STATUS_STOP) {
-    if (!hudmutex.try_lock()) return;
-    navi_data->event_name = "";
+    hud_seq.fetch_add(1, std::memory_order_acq_rel);
+    navi_data->event_name[0] = '\0';
     navi_data->turn_event = 0;
     navi_data->turn_side = 0;
     navi_data->turn_number = -1;
     navi_data->turn_angle = -1;
-    navi_data->distance_changed = 1;
-    navi_data->event_changed = 1;
     navi_data->sync_bit = navi_data->sync_bit + 1;
     if (navi_data->sync_bit == 8){
       navi_data->sync_bit = 1;
     }
-    hudmutex.unlock();
+    hud_seq.fetch_add(1, std::memory_order_acq_rel);
+    hud_cv.notify_one();
   }
 }
 
 void logUnknownFields(const ::google::protobuf::UnknownFieldSet& fields);
 
 void MazdaEventCallbacks::HandleNaviTurn(IHUConnectionThreadInterface& stream, const HU::NAVTurnMessage &request){
-  logw("NAVTurnMessage: turn_side: %d, turn_event: %d, turn_number: %d, turn_angle: %d, event_name: %s", 
+  logv("NAVTurnMessage: turn_side: %d, turn_event: %d, turn_number: %d, turn_angle: %d, event_name: %s", 
       request.turn_side(),
       request.turn_event(),
       request.turn_number(),
@@ -731,40 +730,36 @@ void MazdaEventCallbacks::HandleNaviTurn(IHUConnectionThreadInterface& stream, c
   );
   logUnknownFields(request.unknown_fields());
 
-  if (!hudmutex.try_lock()) return;
-  if (navi_data->event_name != request.event_name()) {
-    navi_data->event_name = request.event_name();
-    navi_data->event_changed = 1;
-  }
-  if (navi_data->turn_event != request.turn_event()) {
+  bool event_name_changed = strncmp(navi_data->event_name, request.event_name().c_str(), sizeof(navi_data->event_name)) != 0;
+  if (event_name_changed ||
+      navi_data->turn_event != request.turn_event() ||
+      navi_data->turn_side != request.turn_side() ||
+      navi_data->turn_number != request.turn_number() ||
+      navi_data->turn_angle != request.turn_angle()) {
+    hud_seq.fetch_add(1, std::memory_order_acq_rel);
     navi_data->turn_event = request.turn_event();
-    navi_data->event_changed = 1;
-  }
-  if (navi_data->turn_side != request.turn_side()) {
     navi_data->turn_side = request.turn_side();
-    navi_data->event_changed = 1;
-  }
-  if (navi_data->turn_number != request.turn_number()) {
     navi_data->turn_number = request.turn_number();
-    navi_data->event_changed = 1;
-  }
-  if (navi_data->turn_angle != request.turn_angle()) {
     navi_data->turn_angle = request.turn_angle();
-    navi_data->event_changed = 1;
-  }
-  if (navi_data->event_changed) {
-    navi_data->sync_bit = navi_data->sync_bit+1;
-    if (navi_data->sync_bit == 8) {
-      navi_data->sync_bit = 1;
+
+    if (event_name_changed) {
+        strncpy(navi_data->event_name, request.event_name().c_str(), sizeof(navi_data->event_name) - 1);
+        navi_data->event_name[sizeof(navi_data->event_name) - 1] = '\0';
+        navi_data->sync_bit = navi_data->sync_bit + 1;
+        if (navi_data->sync_bit == 8) {
+            navi_data->sync_bit = 1;
+        }
     }
+
+    hud_seq.fetch_add(1, std::memory_order_acq_rel);
+    hud_cv.notify_one();
   }
-  hudmutex.unlock();
 }
 
 void MazdaEventCallbacks::HandleNaviTurnDistance(IHUConnectionThreadInterface& stream, const HU::NAVDistanceMessage &request) {
-  if (!hudmutex.try_lock()) return;
   int now_distance;
   HudDistanceUnit now_unit;
+  bool siFallback = false;
   switch (request.display_distance_unit()) {
       case HU::NAVDistanceMessage_DISPLAY_DISTANCE_UNIT_METERS:
         now_distance = request.display_distance() / 100;
@@ -785,14 +780,7 @@ void MazdaEventCallbacks::HandleNaviTurnDistance(IHUConnectionThreadInterface& s
         now_unit = HudDistanceUnit::FEET;
         break;
       default: //not sure, use SI and log
-        logw("NAVDistanceMessage: distance: %d, time: %d, display_distance: %u, display_distance_unit: %d", 
-            request.distance(),
-            request.time_until(),
-            request.display_distance(),
-            request.display_distance_unit()
-        );
-        logUnknownFields(request.unknown_fields());
-
+        siFallback = true;
         if (request.distance() > 1000) {
             now_distance = request.distance() / 100;
             now_unit = HudDistanceUnit::KILOMETERS;
@@ -801,27 +789,35 @@ void MazdaEventCallbacks::HandleNaviTurnDistance(IHUConnectionThreadInterface& s
             now_unit = HudDistanceUnit::METERS;
         }
   }
+
+  if (siFallback) {
+    logv("NAVDistanceMessage: distance: %d, time: %d, display_distance: %u, display_distance_unit: %d", 
+        request.distance(),
+        request.time_until(),
+        request.display_distance(),
+        request.display_distance_unit()
+    );
+    logUnknownFields(request.unknown_fields());
+  } else {
+    logw("NAVDistanceMessage: distance: %d, time: %d, display_distance: %u, display_distance_unit: %d", 
+        request.distance(),
+        request.time_until(),
+        request.display_distance(),
+        request.display_distance_unit()
+    );
+    logUnknownFields(request.unknown_fields());
+  }
   
-  if (now_distance != navi_data->distance || now_unit != navi_data->distance_unit) {
+  if (now_distance != navi_data->distance ||
+      now_unit != navi_data->distance_unit ||
+      navi_data->time_until != request.time_until()) {
+    hud_seq.fetch_add(1, std::memory_order_acq_rel);
     navi_data->distance_unit = now_unit;
     navi_data->distance = now_distance;
-    navi_data->distance_changed = 1;
-    //navi_data->previous_msg = navi_data->previous_msg+1;
-    //if (navi_data->previous_msg == 8) {
-    //  navi_data->previous_msg = 1;
-    //}
-  }
-
-  if (navi_data->time_until != request.time_until()) {
     navi_data->time_until = request.time_until();
-    navi_data->distance_changed = 1;
-    //navi_data->previous_msg = navi_data->previous_msg+1;
-    //if (navi_data->previous_msg == 8) {
-    //  navi_data->previous_msg = 1;
-    //}
+    hud_seq.fetch_add(1, std::memory_order_acq_rel);
+    hud_cv.notify_one();
   }
-
-  hudmutex.unlock();
 }
 
 void logUnknownFields(const ::google::protobuf::UnknownFieldSet& fields) {

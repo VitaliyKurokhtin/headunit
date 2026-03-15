@@ -2,7 +2,8 @@
 #define MZD_HUD_H
 
 #include <stdint.h>
-#include <string>
+#include <cstring>
+#include <atomic>
 #include <functional>
 #include <condition_variable>
 #include <dbus/dbus.h>
@@ -19,7 +20,7 @@ enum HudDistanceUnit: uint8_t {
 };
 
 struct NaviData {
-  std::string event_name;
+  char event_name[32];
   int32_t turn_side;
   int32_t turn_event;
   int32_t turn_number;
@@ -28,12 +29,12 @@ struct NaviData {
   HudDistanceUnit distance_unit; 
   int32_t time_until;
   uint8_t sync_bit;
-  uint8_t distance_changed;
-  uint8_t event_changed;
 };
 
 extern NaviData *navi_data;
-extern std::mutex hudmutex;
+extern std::atomic<uint32_t> hud_seq;
+extern std::condition_variable hud_cv;
+extern std::mutex hud_cv_mutex;
 
 enum NaviTurns: uint32_t {
   STRAIGHT = 1,
@@ -63,8 +64,9 @@ enum NaviTurns: uint32_t {
 
 void hud_start();
 void hud_stop();
+void hud_request_stop();
 bool hud_installed();
-void hud_thread_func(std::condition_variable& quitcv, std::mutex& quitmutex, std::mutex& hudmutex);
+void hud_thread_func();
 
 class HUDSettingsClient : public com::jci::navi2IHU::HUDSettings_proxy,
                      public DBus::ObjectProxy

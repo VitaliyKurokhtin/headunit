@@ -245,7 +245,7 @@ int main (int argc, char *argv[])
 
             std::thread nm_thread([&quitcv, &quitmutex](){ nightmode_thread_func(quitcv, quitmutex); } );
             std::thread gp_thread([&quitcv, &quitmutex](){ gps_thread_func(quitcv, quitmutex); } );
-            std::thread hud_thread([&quitcv, &quitmutex](){ hud_thread_func(quitcv, quitmutex, hudmutex); } );
+            std::thread hud_thread(hud_thread_func);
 
             /* Start gstreamer pipeline and main loop */
 
@@ -263,6 +263,7 @@ int main (int argc, char *argv[])
             printf("quitting...\n");
             //wake up night mode  and gps polling threads
             quitcv.notify_all();
+            hud_request_stop();
 
             printf("waiting for nm_thread\n");
             nm_thread.join();
