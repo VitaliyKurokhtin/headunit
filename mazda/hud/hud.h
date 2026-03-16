@@ -28,7 +28,6 @@ struct NaviData {
   int32_t distance; // distance * 10, encoded like that to store one digit after decimal dot in int type
   HudDistanceUnit distance_unit; 
   int32_t time_until;
-  uint8_t sync_bit;
 };
 
 extern NaviData *navi_data;

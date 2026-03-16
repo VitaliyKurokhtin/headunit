@@ -709,10 +709,6 @@ void MazdaEventCallbacks::HandleNaviStatus(IHUConnectionThreadInterface& stream,
     navi_data->turn_side = 0;
     navi_data->turn_number = -1;
     navi_data->turn_angle = -1;
-    navi_data->sync_bit = navi_data->sync_bit + 1;
-    if (navi_data->sync_bit == 8){
-      navi_data->sync_bit = 1;
-    }
     hud_seq.fetch_add(1, std::memory_order_acq_rel);
     hud_cv.notify_one();
   }
@@ -745,10 +741,6 @@ void MazdaEventCallbacks::HandleNaviTurn(IHUConnectionThreadInterface& stream, c
     if (event_name_changed) {
         strncpy(navi_data->event_name, request.event_name().c_str(), sizeof(navi_data->event_name) - 1);
         navi_data->event_name[sizeof(navi_data->event_name) - 1] = '\0';
-        navi_data->sync_bit = navi_data->sync_bit + 1;
-        if (navi_data->sync_bit == 8) {
-            navi_data->sync_bit = 1;
-        }
     }
 
     hud_seq.fetch_add(1, std::memory_order_acq_rel);

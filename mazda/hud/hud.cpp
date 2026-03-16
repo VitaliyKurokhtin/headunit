@@ -61,6 +61,7 @@ uint8_t roundabout(int32_t degrees, int32_t side){
 void hud_thread_func(){
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   NaviData prev = {};
+  uint8_t sync_bit = 0;
   //Don't bother with the HUD if we aren't connected via dbus
   while (hud_active.load(std::memory_order_relaxed) && hud_installed())
   {
@@ -76,16 +77,23 @@ void hud_thread_func(){
     } while (s1 != s2);
 
     // Determine what changed by comparing with previous snapshot
-    bool event_changed = (snapshot.sync_bit != prev.sync_bit);
-    bool distance_changed = (snapshot.distance != prev.distance ||
+    bool event_changed = strncmp(snapshot.event_name, prev.event_name, sizeof(snapshot.event_name)) != 0;
+    bool distance_changed = (event_changed ||
+                             snapshot.distance != prev.distance ||
                              snapshot.distance_unit != prev.distance_unit ||
                              snapshot.time_until != prev.time_until ||
                              snapshot.turn_angle != prev.turn_angle ||
                              snapshot.turn_side != prev.turn_side);
 
-    uint8_t setGuidsncePointInfo = event_changed || distance_changed;
     ::DBus::Struct< uint32_t, uint16_t, uint8_t, uint16_t, uint8_t, uint8_t > hudDisplayMsg;
-    if (setGuidsncePointInfo) {
+    ::DBus::Struct< std::string, uint8_t > guidancePointData;
+
+    if (event_changed) {
+      guidancePointData._1 = snapshot.event_name;
+      guidancePointData._2 = sync_bit = (++sync_bit % 7 + 1);
+    }
+
+    if (distance_changed) {
       uint32_t diricon;
       if (snapshot.turn_event == 13) {
         diricon = roundabout(snapshot.turn_angle, snapshot.turn_side - 1);
@@ -99,23 +107,16 @@ void hud_thread_func(){
       hudDisplayMsg._3 = snapshot.distance_unit;
       hudDisplayMsg._4 = 0; //Speed limit (Not Used)
       hudDisplayMsg._5 = 0; //Speed limit units (Not used)
-      hudDisplayMsg._6 = snapshot.sync_bit;
-    }
-    
-    uint8_t setGuidncePointName = event_changed;
-    ::DBus::Struct< std::string, uint8_t > guidancePointData;
-    if (setGuidncePointName) {
-      guidancePointData._1 = snapshot.event_name;
-      guidancePointData._2 = snapshot.sync_bit;
+      hudDisplayMsg._6 = sync_bit;
     }
 
     prev = snapshot;
     try
     {
-      if (setGuidsncePointInfo) {
+      if (distance_changed) {
         vbsnavi_client->SetHUDDisplayMsgReq(hudDisplayMsg);
       }
-      if (setGuidncePointName) {
+      if (event_changed) {
         tmc_client->SetHUD_Display_Msg2(guidancePointData);
       }
     }
