@@ -4,6 +4,7 @@
 #include "hu_ssl.h"
 #include <functional>
 #include <thread>
+#include <mutex>
 
 // Channels ( or Service IDs)
 #define AA_CH_CTR 0                                                                                  // Sync with hu_tra.java, hu_aap.h and hu_aap.c:aa_type_array[]
@@ -223,9 +224,15 @@ protected:
   SSL         * hu_ssl_ssl    = NULL;
   BIO         * hu_ssl_rm_bio = NULL;
   BIO         * hu_ssl_wm_bio = NULL;
+  std::mutex    hu_ssl_mutex;
 
   void hu_ssl_ret_log (int ret);
   void hu_ssl_inf_log();
+
+  // Thread-safe encrypt/decrypt using the SSL session.
+  // Returns number of output bytes on success, or negative on error.
+  int hu_ssl_encrypt(const byte* plain_buffer, int plain_buffer_len, byte* encrypted_buffer, int encrypted_buffer_max_len);
+  int hu_ssl_decrypt(const byte* encrypted_buffer, int encrypted_buffer_len, byte* plain_buffer, int plain_buffer_max_len);
 
   int send_ssl_handshake_packet();
   int hu_ssl_begin_handshake ();

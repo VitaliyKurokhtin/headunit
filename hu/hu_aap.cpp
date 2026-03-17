@@ -224,19 +224,6 @@
   #endif
 
 
-      int bytes_written = SSL_write (hu_ssl_ssl, &buf[frag_start], cur_len);               // Write plaintext to SSL
-      if (bytes_written <= 0) {
-        loge ("SSL_write() bytes_written: %d", bytes_written);
-        hu_ssl_ret_log (bytes_written);
-        hu_ssl_inf_log ();
-        hu_aap_stop ();
-        return (-1);
-      }
-      if (bytes_written != cur_len)
-        loge ("SSL_write() cur_len: %d  bytes_written: %d  chan: %d %s", cur_len, bytes_written, chan, chan_get (chan));
-      else if (ena_log_verbo && ena_log_aap_send)
-        logd ("SSL_write() cur_len: %d  bytes_written: %d  chan: %d %s", cur_len, bytes_written, chan, chan_get (chan));
-
       enc_buf [0] = (byte) chan;                                              // Encode channel and flags
       enc_buf [1] = flags;
 
@@ -248,15 +235,14 @@
         header_size += 4;
       }
 
-      int bytes_read = BIO_read (hu_ssl_wm_bio, & enc_buf [header_size], sizeof (enc_buf) - header_size); // Read encrypted from SSL BIO to enc_buf +
-
+      int bytes_read = hu_ssl_encrypt(&buf[frag_start], cur_len, &enc_buf[header_size], sizeof(enc_buf) - header_size);
       if (bytes_read <= 0) {
-        loge ("BIO_read() bytes_read: %d", bytes_read);
+        loge ("hu_ssl_encrypt() failed: %d", bytes_read);
         hu_aap_stop ();
         return (-1);
       }
       if (ena_log_verbo && ena_log_aap_send)
-        logd ("BIO_read() bytes_read: %d", bytes_read);
+        logd ("hu_ssl_encrypt() cur_len: %d  bytes_read: %d  chan: %d %s", cur_len, bytes_read, chan, chan_get (chan));
 
 
 
@@ -1491,24 +1477,13 @@
           size_t cur_vec = temp_assembly_buffer->size();
           temp_assembly_buffer->resize(cur_vec + frame_len); //just incase
 
-          int bytes_written = BIO_write (hu_ssl_rm_bio, &enc_buf[header_size], frame_len);           // Write encrypted to SSL input BIO
-          if (bytes_written <= 0) {
-            loge ("BIO_write() bytes_written: %d", bytes_written);
+          int bytes_read = hu_ssl_decrypt(&enc_buf[header_size], frame_len, &(*temp_assembly_buffer)[cur_vec], frame_len);
+          if (bytes_read <= 0) {
+            loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
             return (-1);
           }
-          if (bytes_written != frame_len)
-            loge ("BIO_write() len: %d  bytes_written: %d  chan: %d %s", frame_len, bytes_written, chan, chan_get (chan));
-          else if (ena_log_verbo)
-            logd ("BIO_write() len: %d  bytes_written: %d  chan: %d %s", frame_len, bytes_written, chan, chan_get (chan));
-
-          int bytes_read = SSL_read (hu_ssl_ssl, &(*temp_assembly_buffer)[cur_vec], frame_len);   // Read decrypted to decrypted rx buf
-          if (bytes_read <= 0 || bytes_read > frame_len) {
-            loge ("SSL_read() bytes_read: %d  errno: %d", bytes_read, errno);
-            hu_ssl_ret_log (bytes_read);
-            return (-1);                                                      // Fatal so return error and de-initialize; Should we be able to recover, if Transport data got corrupted ??
-          }
           if (ena_log_verbo)
-            logd ("SSL_read() bytes_read: %d", bytes_read);
+            logd ("hu_ssl_decrypt() bytes_read: %d", bytes_read);
 
           temp_assembly_buffer->resize(cur_vec + bytes_read);
       }

@@ -262,3 +262,45 @@
 
       return  0;
   }
+
+  int HUServer::hu_ssl_encrypt(const byte* plain_buffer, int plain_buffer_len, byte* encrypted_buffer, int encrypted_buffer_max_len) {
+    std::lock_guard<std::mutex> lock(hu_ssl_mutex);
+
+    int bytes_written = SSL_write(hu_ssl_ssl, plain_buffer, plain_buffer_len);
+    if (bytes_written <= 0) {
+      loge("hu_ssl_encrypt: SSL_write() failed: %d", bytes_written);
+      hu_ssl_ret_log(bytes_written);
+      return -1;
+    }
+    if (bytes_written != plain_buffer_len)
+      loge("hu_ssl_encrypt: SSL_write() plain_buffer_len: %d  bytes_written: %d", plain_buffer_len, bytes_written);
+
+    int bytes_read = BIO_read(hu_ssl_wm_bio, encrypted_buffer, encrypted_buffer_max_len);
+    if (bytes_read <= 0) {
+      loge("hu_ssl_encrypt: BIO_read() failed: %d", bytes_read);
+      return -1;
+    }
+
+    return bytes_read;
+  }
+
+  int HUServer::hu_ssl_decrypt(const byte* encrypted_buffer, int encrypted_buffer_len, byte* plain_buffer, int plain_buffer_max_len) {
+    std::lock_guard<std::mutex> lock(hu_ssl_mutex);
+
+    int bytes_written = BIO_write(hu_ssl_rm_bio, encrypted_buffer, encrypted_buffer_len);
+    if (bytes_written <= 0) {
+      loge("hu_ssl_decrypt: BIO_write() failed: %d", bytes_written);
+      return -1;
+    }
+    if (bytes_written != encrypted_buffer_len)
+      loge("hu_ssl_decrypt: BIO_write() encrypted_buffer_len: %d  bytes_written: %d", encrypted_buffer_len, bytes_written);
+
+    int bytes_read = SSL_read(hu_ssl_ssl, plain_buffer, plain_buffer_max_len);
+    if (bytes_read <= 0 || bytes_read > plain_buffer_max_len) {
+      loge("hu_ssl_decrypt: SSL_read() failed: %d  errno: %d", bytes_read, errno);
+      hu_ssl_ret_log(bytes_read);
+      return -1;
+    }
+
+    return bytes_read;
+  }
