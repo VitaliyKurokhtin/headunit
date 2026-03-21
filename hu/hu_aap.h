@@ -2,9 +2,11 @@
 #include "hu_uti.h"
 #include "hu.pb.h"
 #include "hu_ssl.h"
+#include "hu_aap_send_thread.h"
 #include <functional>
 #include <thread>
 #include <mutex>
+#include <memory>
 
 // Channels ( or Service IDs)
 #define AA_CH_CTR 0                                                                                  // Sync with hu_tra.java, hu_aap.h and hu_aap.c:aa_type_array[]
@@ -97,6 +99,15 @@ public:
   typedef std::function<void(IHUConnectionThreadInterface&)> HUThreadCommand;
   //Can be called from any thread
   virtual int hu_queue_command(HUThreadCommand&& command) = 0;
+
+  //Thread-safe media send
+  virtual int hu_aap_enc_send_media_packet(int retry, int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout = -1) = 0;
+
+  template<typename EnumType>
+  inline int hu_aap_enc_send_media_packet(int retry, int chan, EnumType messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout = -1)
+  {
+    return hu_aap_enc_send_media_packet(retry, chan, static_cast<uint16_t>(messageCode), timeStamp, buffer, bufferLen, overrideTimeout);
+  }
 };
 
 class IHUConnectionThreadInterface : public IHUAnyThreadInterface
@@ -106,7 +117,6 @@ protected:
   IHUConnectionThreadInterface() {}
 public:
   virtual int hu_aap_enc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) = 0;
-  virtual int hu_aap_enc_send_media_packet(int retry, int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout = -1) = 0;
   virtual int hu_aap_unenc_send_blob(int retry, int chan, uint16_t messageCode, const byte* buffer, int bufferLen, int overrideTimeout = -1) = 0;
   virtual int hu_aap_unenc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) = 0;
 
@@ -114,12 +124,6 @@ public:
   inline int hu_aap_enc_send_message(int retry, int chan, EnumType messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1)
   {
     return hu_aap_enc_send_message(retry, chan, static_cast<uint16_t>(messageCode), message, overrideTimeout);
-  }
-
-  template<typename EnumType>
-  inline int hu_aap_enc_send_media_packet(int retry, int chan, EnumType messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout = -1)
-  {
-    return hu_aap_enc_send_media_packet(retry, chan, static_cast<uint16_t>(messageCode), timeStamp, buffer, bufferLen, overrideTimeout);
   }
 
   template<typename EnumType>
@@ -203,12 +207,20 @@ protected:
   HU_STATE iaap_state = hu_STATE_INITIAL;
   int iaap_tra_recv_tmo = 150;//100;//1;//10;//100;//250;//100;//250;//100;//25; // 10 doesn't work ? 100 does
   int iaap_tra_send_tmo = 500;//2;//25;//250;//500;//100;//500;//250;
+  // Recv path buffers (used only on hu_thread)
   std::vector<uint8_t>* temp_assembly_buffer = new std::vector<uint8_t>();
   std::map<int, std::vector<uint8_t>*> channel_assembly_buffers;
   byte enc_buf[MAX_FRAME_SIZE] = {0};
   int32_t channel_session_id[AA_CH_MAX] = {0};
-  std::vector<uint8_t> pre_serialized_media_ack[AA_CH_MAX];
+
+  // Send path buffers (protected by send_mutex, callable from any thread)
+  std::mutex    send_mutex;
+  byte send_enc_buf[MAX_FRAME_SIZE] = {0};
+  std::vector<uint8_t> send_assembly_buffer;
+  std::shared_ptr<std::vector<uint8_t>> pre_serialized_media_ack[AA_CH_MAX];
   void build_media_ack(int chan);
+
+  std::unique_ptr<HUSenderThread> sender_thread;
 
   std::thread hu_thread;
   int command_read_fd = -1;
@@ -244,8 +256,10 @@ protected:
 
   int hu_aap_tra_recv (byte * buf, int len, int tmo);                      // Used by intern,                      hu_ssl
   int hu_aap_tra_send (int retry, byte * buf, int len, int tmo);                      // Used by intern,                      hu_ssl
-  int hu_aap_enc_send (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);                     // Used by intern,            hu_jni     // Encrypted Send
-  int hu_aap_unenc_send (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);
+  int hu_aap_enc_send (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);                     // Acquires send_mutex
+  int hu_aap_enc_send_locked (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);             // Caller must hold send_mutex
+  int hu_aap_unenc_send (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);                   // Acquires send_mutex
+  int hu_aap_unenc_send_locked (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);           // Caller must hold send_mutex
 
   int hu_aap_recv_process (int tmo);                                              // Used by          hu_mai,  hu_jni     // Process 1 encrypted receive message set:
                                                                                                                           // Respond to decrypted message
@@ -256,7 +270,7 @@ protected:
   virtual int hu_aap_stop     () override;
 
   using IHUConnectionThreadInterface::hu_aap_enc_send_message;
-  using IHUConnectionThreadInterface::hu_aap_enc_send_media_packet;
+  using IHUAnyThreadInterface::hu_aap_enc_send_media_packet;
   using IHUConnectionThreadInterface::hu_aap_unenc_send_blob;
   using IHUConnectionThreadInterface::hu_aap_unenc_send_message;
 

@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "buffer_pool.h"
 
 AudioOutput::AudioOutput(const char *outDev)
 {
@@ -8,7 +9,7 @@ AudioOutput::AudioOutput(const char *outDev)
     if ((err = snd_pcm_open(&aud_handle, outDev, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
         loge("Playback open error: %s\n", snd_strerror(err));
     }
-    if ((err = snd_pcm_set_params(aud_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2,48000, 1, 200000)) < 0) {   /* 0.2sec */
+    if ((err = snd_pcm_set_params(aud_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2,48000, 1, 50000)) < 0) {   /* 0.05sec */
         loge("Playback open error: %s\n", snd_strerror(err));
     }
 
@@ -19,7 +20,7 @@ AudioOutput::AudioOutput(const char *outDev)
     if ((err = snd_pcm_open(&au1_handle, outDev, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
         loge("Playback open error: %s\n", snd_strerror(err));
     }
-    if ((err = snd_pcm_set_params(au1_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2, 16000, 1, 200000)) < 0) {   /* 0.2sec */
+    if ((err = snd_pcm_set_params(au1_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2, 16000, 1, 50000)) < 0) {   /* 0.05sec */
         loge("Playback open error: %s\n", snd_strerror(err));
     }
 
@@ -218,8 +219,8 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
         return;
     }
 
-    if ((err = snd_pcm_set_params(mic_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1,16000, 1, 250000)) < 0)
-    {   /* 0.25sec */
+    if ((err = snd_pcm_set_params(mic_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1,16000, 1, 50000)) < 0)
+    {   /* 0.05sec */
         loge("Playback open error: %s\n", snd_strerror(err));
         snd_pcm_close(mic_handle);
         return;
@@ -238,13 +239,16 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
         return;
     }
 
-    const size_t tempSize = 1024*1024;
-    const snd_pcm_sframes_t bufferFrameCount = snd_pcm_bytes_to_frames(mic_handle, tempSize);
+    snd_pcm_uframes_t buffer_size, period_size;
+    snd_pcm_get_params(mic_handle, &buffer_size, &period_size);
+    const size_t tempSize = snd_pcm_frames_to_bytes(mic_handle, period_size);
+    const snd_pcm_sframes_t bufferFrameCount = period_size;
+    BufferPool pool(tempSize, 2);
     bool canceled = false;
     while(!canceled)
     {
-        uint8_t* tempBuffer = new uint8_t[tempSize];
-        snd_pcm_sframes_t frames = read_mic_cancelable(mic_handle, tempBuffer, bufferFrameCount, &canceled);
+        auto tempBuffer = pool.acquire();
+        snd_pcm_sframes_t frames = read_mic_cancelable(mic_handle, tempBuffer.data(), bufferFrameCount, &canceled);
         if (frames < 0)
         {
             if (frames == -ESTRPIPE)
@@ -256,24 +260,21 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
                 }
                 else
                 {
-                    frames = read_mic_cancelable(mic_handle, tempBuffer, bufferFrameCount, &canceled);
+                    frames = read_mic_cancelable(mic_handle, tempBuffer.data(), bufferFrameCount, &canceled);
                 }
             }
 
             if (frames < 0)
             {
-                delete [] tempBuffer;
+                pool.release(std::move(tempBuffer));
                 canceled = true;
                 continue;
             }
         }
         ssize_t bytesRead = snd_pcm_frames_to_bytes(mic_handle, frames);
-        threadInterface->hu_queue_command([tempBuffer, bytesRead](IHUConnectionThreadInterface& s)
-        {
-            //doesn't seem like the timestamp is used so pass 0
-            s.hu_aap_enc_send_media_packet(1, AA_CH_MIC, HU_PROTOCOL_MESSAGE::MediaDataWithTimestamp, 0, tempBuffer, bytesRead);
-            delete [] tempBuffer;
-        });
+        //doesn't seem like the timestamp is used so pass 0
+        threadInterface->hu_aap_enc_send_media_packet(1, AA_CH_MIC, HU_PROTOCOL_MESSAGE::MediaDataWithTimestamp, 0, tempBuffer.data(), bytesRead);
+        pool.release(std::move(tempBuffer));
     }
 
     if ((err = snd_pcm_drop(mic_handle)) < 0)

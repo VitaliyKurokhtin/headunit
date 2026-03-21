@@ -142,14 +142,16 @@
 
   int HUServer::hu_aap_enc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout)
   {
+    std::lock_guard<std::mutex> lk(send_mutex);
+
     const int messageSize = message.ByteSize();
     const int requiredSize = messageSize + 2;
-    if (temp_assembly_buffer->size() < requiredSize)
+    if (send_assembly_buffer.size() < requiredSize)
     {
-      temp_assembly_buffer->resize(requiredSize);
+      send_assembly_buffer.resize(requiredSize);
     }
 
-    uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(temp_assembly_buffer->data());
+    uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(send_assembly_buffer.data());
     *destMessageCode++ = htobe16(messageCode);
 
     if (!message.SerializeToArray(destMessageCode, messageSize))
@@ -159,20 +161,22 @@
     }
 
     logd ("Send %s on channel %i %s", message.GetTypeName().c_str(), chan, chan_get(chan));
-    //hex_dump("PB:", 80, temp_assembly_buffer->data(), requiredSize);
-    return hu_aap_enc_send(retry, chan, temp_assembly_buffer->data(), requiredSize, overrideTimeout);
+    //hex_dump("PB:", 80, send_assembly_buffer.data(), requiredSize);
+    return hu_aap_enc_send_locked(retry, chan, send_assembly_buffer.data(), requiredSize, overrideTimeout);
 
   }
 
   int HUServer::hu_aap_enc_send_media_packet(int retry, int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout)
   {
+    std::lock_guard<std::mutex> lk(send_mutex);
+
     const int requiredSize = bufferLen + 2 + 8;
-    if (temp_assembly_buffer->size() < requiredSize)
+    if (send_assembly_buffer.size() < requiredSize)
     {
-      temp_assembly_buffer->resize(requiredSize);
+      send_assembly_buffer.resize(requiredSize);
     }
 
-    uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(temp_assembly_buffer->data());
+    uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(send_assembly_buffer.data());
     *destMessageCode++ = htobe16(messageCode);
 
     uint64_t* destTimestamp = reinterpret_cast<uint64_t*>(destMessageCode);
@@ -181,23 +185,26 @@
     memcpy(destTimestamp, buffer, bufferLen);
 
     //logd ("Send %s on channel %i %s", message.GetTypeName().c_str(), chan, chan_get(chan));
-    //hex_dump("PB:", 80, temp_assembly_buffer->data(), requiredSize);
-    return hu_aap_enc_send(retry, chan, temp_assembly_buffer->data(), requiredSize, overrideTimeout);
+    //hex_dump("PB:", 80, send_assembly_buffer.data(), requiredSize);
+    return hu_aap_enc_send_locked(retry, chan, send_assembly_buffer.data(), requiredSize, overrideTimeout);
   }
 
-  int HUServer::hu_aap_enc_send (int retry,int chan, byte * buf, int len, int overrideTimeout) {                 // Encrypt data and send: type,...
+  int HUServer::hu_aap_enc_send (int retry,int chan, byte * buf, int len, int overrideTimeout) {
+    std::lock_guard<std::mutex> lk(send_mutex);
+    return hu_aap_enc_send_locked(retry, chan, buf, len, overrideTimeout);
+  }
+
+  int HUServer::hu_aap_enc_send_locked (int retry,int chan, byte * buf, int len, int overrideTimeout) {  // Encrypt data and send: type,...
+    // send_mutex must be held by caller
     if (iaap_state != hu_STATE_STARTED) {
       logw ("CHECK: iaap_state: %d (%s)", iaap_state, state_get (iaap_state));
-      //logw ("chan: %d  len: %d  buf: %p", chan, len, buf);
-      //hex_dump (" W/    hu_aap_enc_send: ", 16, buf, len);    // Byebye: hu_aap_enc_send:  00000000 00 0f 08 00
       return (-1);
     }
 
     byte base_flags = HU_FRAME_ENCRYPTED;
     uint16_t message_type = be16toh(*((uint16_t*)buf));
-    if (chan != AA_CH_CTR && message_type >= 2 && message_type < 0x8000) {                            // If not control channel and msg_type = 0 - 255 = control type message
-        base_flags |= HU_FRAME_CONTROL_MESSAGE;                                                     // Set Control Flag (On non-control channels, indicates generic/"control type" messages
-        //logd ("Setting control");
+    if (chan != AA_CH_CTR && message_type >= 2 && message_type < 0x8000) {
+        base_flags |= HU_FRAME_CONTROL_MESSAGE;
     }
 
     for (int frag_start = 0; frag_start < len; frag_start += MAX_FRAME_PAYLOAD_SIZE)
@@ -215,27 +222,25 @@
         cur_len = len - frag_start;
       }
   #ifndef NDEBUG
-  //    if (ena_log_verbo && ena_log_aap_send) {
-      if (log_packet_info) { // && ena_log_aap_send)
+      if (log_packet_info) {
         char prefix [MAX_FRAME_SIZE] = {0};
-        snprintf (prefix, sizeof (prefix), "S %d %s %1.1x", chan, chan_get (chan), flags);  // "S 1 VID B"
+        snprintf (prefix, sizeof (prefix), "S %d %s %1.1x", chan, chan_get (chan), flags);
         int rmv = hu_aad_dmp (prefix, "HU", chan, flags, &buf[frag_start], cur_len);
       }
   #endif
 
 
-      enc_buf [0] = (byte) chan;                                              // Encode channel and flags
-      enc_buf [1] = flags;
+      send_enc_buf [0] = (byte) chan;
+      send_enc_buf [1] = flags;
 
       int header_size = 4;
       if ((flags & HU_FRAME_FIRST_FRAME) & !(flags & HU_FRAME_LAST_FRAME))
       {
-        //write total len
-        *((uint32_t*)&enc_buf[header_size]) = htobe32(len);
+        *((uint32_t*)&send_enc_buf[header_size]) = htobe32(len);
         header_size += 4;
       }
 
-      int bytes_read = hu_ssl_encrypt(&buf[frag_start], cur_len, &enc_buf[header_size], sizeof(enc_buf) - header_size);
+      int bytes_read = hu_ssl_encrypt(&buf[frag_start], cur_len, &send_enc_buf[header_size], sizeof(send_enc_buf) - header_size);
       if (bytes_read <= 0) {
         loge ("hu_ssl_encrypt() failed: %d", bytes_read);
         hu_aap_stop ();
@@ -246,10 +251,10 @@
 
 
 
-      *((uint16_t*)&enc_buf[2]) = htobe16(bytes_read);
+      *((uint16_t*)&send_enc_buf[2]) = htobe16(bytes_read);
 
       int ret = 0;
-      ret = hu_aap_tra_send (retry, enc_buf, bytes_read + header_size, overrideTimeout < 0 ? iaap_tra_send_tmo : overrideTimeout);           // Send encrypted data to AA Server
+      ret = hu_aap_tra_send (retry, send_enc_buf, bytes_read + header_size, overrideTimeout < 0 ? iaap_tra_send_tmo : overrideTimeout);
       if (retry)
   		  return (ret);
     }
@@ -257,19 +262,22 @@
     return (0);
   }
 
- int HUServer::hu_aap_unenc_send (int retry,int chan, byte * buf, int len, int overrideTimeout) {                 // Encrypt data and send: type,...
+ int HUServer::hu_aap_unenc_send (int retry,int chan, byte * buf, int len, int overrideTimeout) {
+    std::lock_guard<std::mutex> lk(send_mutex);
+    return hu_aap_unenc_send_locked(retry, chan, buf, len, overrideTimeout);
+  }
+
+ int HUServer::hu_aap_unenc_send_locked (int retry,int chan, byte * buf, int len, int overrideTimeout) {  // Unencrypted send: type,...
+    // send_mutex must be held by caller
     if (iaap_state != hu_STATE_STARTED && iaap_state != hu_STATE_STARTIN) {
       logw ("CHECK: iaap_state: %d (%s)", iaap_state, state_get (iaap_state));
-      //logw ("chan: %d  len: %d  buf: %p", chan, len, buf);
-      //hex_dump (" W/    hu_aap_enc_send: ", 16, buf, len);    // Byebye: hu_aap_enc_send:  00000000 00 0f 08 00
       return (-1);
     }
 
     byte base_flags = 0;
     uint16_t message_type = be16toh(*((uint16_t*)buf));
-    if (chan != AA_CH_CTR && message_type >= 2 && message_type < 0x8000) {                            // If not control channel and msg_type = 0 - 255 = control type message
-        base_flags |= HU_FRAME_CONTROL_MESSAGE;                                                     // Set Control Flag (On non-control channels, indicates generic/"control type" messages
-        //logd ("Setting control");
+    if (chan != AA_CH_CTR && message_type >= 2 && message_type < 0x8000) {
+        base_flags |= HU_FRAME_CONTROL_MESSAGE;
     }
 
     logd("Sending hu_aap_unenc_send %i bytes", len);
@@ -291,29 +299,27 @@
 
       logd("Frame %i : %i bytes",(int)flags, cur_len);
   #ifndef NDEBUG
-  //    if (ena_log_verbo && ena_log_aap_send) {
-      if (log_packet_info) { // && ena_log_aap_send)
+      if (log_packet_info) {
         char prefix [MAX_FRAME_SIZE] = {0};
-        snprintf (prefix, sizeof (prefix), "S %d %s %1.1x", chan, chan_get (chan), flags);  // "S 1 VID B"
+        snprintf (prefix, sizeof (prefix), "S %d %s %1.1x", chan, chan_get (chan), flags);
         int rmv = hu_aad_dmp (prefix, "HU", chan, flags, &buf[frag_start], cur_len);
       }
   #endif
 
-      enc_buf [0] = (byte) chan;                                              // Encode channel and flags
-      enc_buf [1] = flags;
-      *((uint16_t*)&enc_buf[2]) = htobe16(cur_len);
+      send_enc_buf [0] = (byte) chan;
+      send_enc_buf [1] = flags;
+      *((uint16_t*)&send_enc_buf[2]) = htobe16(cur_len);
       int header_size = 4;
       if ((flags & HU_FRAME_FIRST_FRAME) & !(flags & HU_FRAME_LAST_FRAME))
       {
-        //write total len
-        *((uint32_t*)&enc_buf[header_size]) = htobe32(len);
+        *((uint32_t*)&send_enc_buf[header_size]) = htobe32(len);
         header_size += 4;
       }
 
-      memcpy(&enc_buf[header_size], &buf[frag_start], cur_len);
+      memcpy(&send_enc_buf[header_size], &buf[frag_start], cur_len);
 
       int ret = 0;
-      return hu_aap_tra_send (retry, enc_buf, cur_len + header_size, overrideTimeout < 0 ? iaap_tra_send_tmo : overrideTimeout);           // Send encrypted data to AA Server
+      return hu_aap_tra_send (retry, send_enc_buf, cur_len + header_size, overrideTimeout < 0 ? iaap_tra_send_tmo : overrideTimeout);
     }
 
     return (0);
@@ -321,32 +327,36 @@
 
   int HUServer::hu_aap_unenc_send_blob(int retry, int chan, uint16_t messageCode, const byte* buffer, int bufferLen, int overrideTimeout)
   {
+    std::lock_guard<std::mutex> lk(send_mutex);
+
     const int requiredSize = bufferLen + 2;
-    if (temp_assembly_buffer->size() < requiredSize)
+    if (send_assembly_buffer.size() < requiredSize)
     {
-      temp_assembly_buffer->resize(requiredSize);
+      send_assembly_buffer.resize(requiredSize);
     }
 
-    uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(temp_assembly_buffer->data());
+    uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(send_assembly_buffer.data());
     *destMessageCode++ = htobe16(messageCode);
 
      memcpy(destMessageCode, buffer, bufferLen);
 
     //logd ("Send %s on channel %i %s", message.GetTypeName().c_str(), chan, chan_get(chan));
-    //hex_dump("PB:", 80, temp_assembly_buffer->data(), requiredSize);
-    return hu_aap_unenc_send(retry, chan, temp_assembly_buffer->data(), requiredSize, overrideTimeout);
+    //hex_dump("PB:", 80, send_assembly_buffer.data(), requiredSize);
+    return hu_aap_unenc_send_locked(retry, chan, send_assembly_buffer.data(), requiredSize, overrideTimeout);
   }
 
   int HUServer::hu_aap_unenc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout)
   {
+    std::lock_guard<std::mutex> lk(send_mutex);
+
     const int messageSize = message.ByteSize();
     const int requiredSize = messageSize + 2;
-    if (temp_assembly_buffer->size() < requiredSize)
+    if (send_assembly_buffer.size() < requiredSize)
     {
-      temp_assembly_buffer->resize(requiredSize);
+      send_assembly_buffer.resize(requiredSize);
     }
 
-    uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(temp_assembly_buffer->data());
+    uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(send_assembly_buffer.data());
     *destMessageCode++ = htobe16(messageCode);
 
     if (!message.SerializeToArray(destMessageCode, messageSize))
@@ -356,8 +366,8 @@
     }
 
     logd ("Send %s on channel %i %s", message.GetTypeName().c_str(), chan, chan_get(chan));
-    //hex_dump("PB:", 80, temp_assembly_buffer->data(), requiredSize);
-    return hu_aap_unenc_send(retry, chan, temp_assembly_buffer->data(), requiredSize, overrideTimeout);
+    //hex_dump("PB:", 80, send_assembly_buffer.data(), requiredSize);
+    return hu_aap_unenc_send_locked(retry, chan, send_assembly_buffer.data(), requiredSize, overrideTimeout);
   }
 
 
@@ -718,10 +728,11 @@
     mediaAck.set_value(1);
 
     int messageSize = mediaAck.ByteSize();
-    pre_serialized_media_ack[chan].resize(messageSize + 2);
-    uint16_t* p = reinterpret_cast<uint16_t*>(pre_serialized_media_ack[chan].data());
+    auto buf = std::make_shared<std::vector<uint8_t>>(messageSize + 2);
+    uint16_t* p = reinterpret_cast<uint16_t*>(buf->data());
     *p = htobe16(static_cast<uint16_t>(HU_MEDIA_CHANNEL_MESSAGE::MediaAck));
     mediaAck.SerializeToArray(p + 1, messageSize);
+    pre_serialized_media_ack[chan] = std::move(buf);
   }
 
 
@@ -819,9 +830,8 @@
       return ret;
     }
 
-
-    return hu_aap_enc_send(0, chan, pre_serialized_media_ack[chan].data(),
-                           pre_serialized_media_ack[chan].size(), 0);
+    sender_thread->enqueue(0, chan, pre_serialized_media_ack[chan], 0);
+    return 0;
   }
 
   int HUServer::hu_handle_MediaData(int chan, byte * buf, int len) {
@@ -832,9 +842,8 @@
       return ret;
     }
 
-
-    return hu_aap_enc_send(0, chan, pre_serialized_media_ack[chan].data(),
-                           pre_serialized_media_ack[chan].size(), 0);
+    sender_thread->enqueue(0, chan, pre_serialized_media_ack[chan], 0);
+    return 0;
   }
 
   int HUServer::hu_handle_PhoneStatus(int chan, byte * buf, int len) {
@@ -1164,6 +1173,11 @@
 
   int HUServer::hu_aap_shutdown()
   {
+    if (sender_thread)
+    {
+      sender_thread->stop();
+      sender_thread.reset();
+    }
 
     if (hu_thread.joinable())
     {
@@ -1354,6 +1368,12 @@
     command_write_fd = pipefd[1];
     hu_thread_quit_flag = false;
     hu_thread = std::thread([this] { this->hu_thread_main(); });
+
+    sender_thread.reset(new HUSenderThread([this](int retry, int chan, byte* buf, int len, int tmo) {
+        return hu_aap_enc_send(retry, chan, buf, len, tmo);
+    }));
+    sender_thread->start();
+    logw("Started sender thread");
 
 
     return (0);
