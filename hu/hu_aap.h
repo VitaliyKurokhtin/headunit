@@ -108,6 +108,32 @@ public:
   {
     return hu_aap_enc_send_media_packet(retry, chan, static_cast<uint16_t>(messageCode), timeStamp, buffer, bufferLen, overrideTimeout);
   }
+
+  //Thread-safe message send
+  virtual int hu_aap_enc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) = 0;
+
+  template<typename EnumType>
+  inline int hu_aap_enc_send_message(int retry, int chan, EnumType messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1)
+  {
+    return hu_aap_enc_send_message(retry, chan, static_cast<uint16_t>(messageCode), message, overrideTimeout);
+  }
+
+  //Serialize and queue to sender thread (non-blocking, fire-and-forget)
+  virtual void hu_queue_enc_send_message(int chan, uint16_t messageCode, const google::protobuf::MessageLite& message) = 0;
+
+  template<typename EnumType>
+  inline void hu_queue_enc_send_message(int chan, EnumType messageCode, const google::protobuf::MessageLite& message)
+  {
+    hu_queue_enc_send_message(chan, static_cast<uint16_t>(messageCode), message);
+  }
+
+  virtual void hu_queue_enc_send_media_packet(int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen) = 0;
+
+  template<typename EnumType>
+  inline void hu_queue_enc_send_media_packet(int chan, EnumType messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen)
+  {
+    hu_queue_enc_send_media_packet(chan, static_cast<uint16_t>(messageCode), timeStamp, buffer, bufferLen);
+  }
 };
 
 class IHUConnectionThreadInterface : public IHUAnyThreadInterface
@@ -116,15 +142,8 @@ protected:
   ~IHUConnectionThreadInterface() {}
   IHUConnectionThreadInterface() {}
 public:
-  virtual int hu_aap_enc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) = 0;
   virtual int hu_aap_unenc_send_blob(int retry, int chan, uint16_t messageCode, const byte* buffer, int bufferLen, int overrideTimeout = -1) = 0;
   virtual int hu_aap_unenc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) = 0;
-
-  template<typename EnumType>
-  inline int hu_aap_enc_send_message(int retry, int chan, EnumType messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1)
-  {
-    return hu_aap_enc_send_message(retry, chan, static_cast<uint16_t>(messageCode), message, overrideTimeout);
-  }
 
   template<typename EnumType>
   inline int hu_aap_unenc_send_blob(int retry, int chan, EnumType messageCode, const byte* buffer, int bufferLen, int overrideTimeout = -1)
@@ -264,12 +283,16 @@ protected:
   int hu_aap_recv_process (int tmo);                                              // Used by          hu_mai,  hu_jni     // Process 1 encrypted receive message set:
                                                                                                                           // Respond to decrypted message
   virtual int hu_aap_enc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) override;
+  virtual void hu_queue_enc_send_message(int chan, uint16_t messageCode, const google::protobuf::MessageLite& message) override;
+  virtual void hu_queue_enc_send_media_packet(int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen) override;
   virtual int hu_aap_enc_send_media_packet(int retry, int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout = -1) override;
   virtual int hu_aap_unenc_send_blob(int retry, int chan, uint16_t messageCode, const byte* buffer, int bufferLen, int overrideTimeout = -1) override;
   virtual int hu_aap_unenc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) override;
   virtual int hu_aap_stop     () override;
 
-  using IHUConnectionThreadInterface::hu_aap_enc_send_message;
+  using IHUAnyThreadInterface::hu_aap_enc_send_message;
+  using IHUAnyThreadInterface::hu_queue_enc_send_message;
+  using IHUAnyThreadInterface::hu_queue_enc_send_media_packet;
   using IHUAnyThreadInterface::hu_aap_enc_send_media_packet;
   using IHUConnectionThreadInterface::hu_aap_unenc_send_blob;
   using IHUConnectionThreadInterface::hu_aap_unenc_send_message;

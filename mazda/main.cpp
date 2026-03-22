@@ -65,10 +65,7 @@ static void nightmode_thread_func(std::condition_variable& quitcv, std::mutex& q
             HU::SensorEvent sensorEvent;
             sensorEvent.add_night_mode()->set_is_night(nightmodenow);
 
-            g_hu->hu_queue_command([sensorEvent](IHUConnectionThreadInterface& s)
-            {
-                s.hu_aap_enc_send_message(0, AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
-            });
+            g_hu->hu_queue_enc_send_message(AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
         }
 
         {
@@ -146,10 +143,7 @@ static void gps_thread_func(std::condition_variable& quitcv, std::mutex& quitmut
             location->set_altitude(static_cast<int32_t>(data.altitude * 1E2));
             location->set_accuracy(static_cast<int32_t>(data.horizontalAccuracy * 1E3));
 
-            g_hu->hu_queue_command([sensorEvent](IHUConnectionThreadInterface& s)
-            {
-                s.hu_aap_enc_send_message(0, AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
-            });
+            g_hu->hu_queue_enc_send_message(AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
         }
 
         {

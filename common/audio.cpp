@@ -1,6 +1,81 @@
 #include "audio.h"
 #include "buffer_pool.h"
 
+// --- AlsaWriter ---
+
+AlsaWriter::AlsaWriter(snd_pcm_t* handle, const char* name)
+    : handle_(handle), name_(name)
+{
+}
+
+void AlsaWriter::onStarted()
+{
+    pthread_setname_np(pthread_self(), name_.c_str());
+}
+
+void AlsaWriter::onStopping()
+{
+    if (handle_) snd_pcm_drop(handle_);
+}
+
+void AlsaWriter::process(AudioCommand& cmd)
+{
+    if (cmd.type == AudioCommand::Flush) {
+        snd_pcm_drop(handle_);
+        snd_pcm_prepare(handle_);
+        return;
+    }
+
+    snd_pcm_sframes_t framecount = snd_pcm_bytes_to_frames(handle_, cmd.data.size());
+
+    // Check for accumulated latency and resync if needed
+    snd_pcm_sframes_t delay = 0;
+    if (snd_pcm_delay(handle_, &delay) == 0 && delay > framecount * 4) {
+        logw("%s: latency drift detected (%ld frames buffered, threshold %ld), resyncing\n",
+             name_.c_str(), (long)delay, (long)(framecount * 4));
+        snd_pcm_drop(handle_);
+        snd_pcm_prepare(handle_);
+    }
+
+    snd_pcm_sframes_t frames = snd_pcm_writei(handle_, cmd.data.data(), framecount);
+    if (frames < 0) {
+        frames = snd_pcm_recover(handle_, frames, 1);
+        if (frames >= 0) {
+            frames = snd_pcm_writei(handle_, cmd.data.data(), framecount);
+        }
+    }
+    if (frames >= 0 && frames < framecount) {
+        loge("Short write (expected %i, wrote %i)\n", (int)framecount, (int)frames);
+    }
+}
+
+void AlsaWriter::write(const byte* buf, int len)
+{
+    AudioCommand cmd;
+    cmd.type = AudioCommand::Data;
+    cmd.data.assign(buf, buf + len);
+    enqueueEntry(std::move(cmd));
+}
+
+void AlsaWriter::write(std::vector<uint8_t>&& data)
+{
+    AudioCommand cmd;
+    cmd.type = AudioCommand::Data;
+    cmd.data = std::move(data);
+    enqueueEntry(std::move(cmd));
+}
+
+void AlsaWriter::flush()
+{
+    clearQueue();
+    snd_pcm_drop(handle_);
+    AudioCommand cmd;
+    cmd.type = AudioCommand::Flush;
+    enqueueEntry(std::move(cmd));
+}
+
+// --- AudioOutput ---
+
 AudioOutput::AudioOutput(const char *outDev)
 {
     printf("snd_asoundlib_version: %s\n", snd_asoundlib_version());
@@ -28,92 +103,28 @@ AudioOutput::AudioOutput(const char *outDev)
         loge("snd_pcm_prepare error: %s\n", snd_strerror(err));
     }
 
-    // Start writer threads so ALSA writes don't block the HU protocol thread
     if (aud_handle) {
-        aud_writer_thread = std::thread(&AudioOutput::WriterThread, this, aud_handle, std::ref(aud_channel), "aud_writer");
+        aud_writer = new AlsaWriter(aud_handle, "aud_writer");
+        aud_writer->start();
     }
     if (au1_handle) {
-        au1_writer_thread = std::thread(&AudioOutput::WriterThread, this, au1_handle, std::ref(au1_channel), "au1_writer");
+        au1_writer = new AlsaWriter(au1_handle, "au1_writer");
+        au1_writer->start();
     }
 }
 
 AudioOutput::~AudioOutput()
 {
-    quit_flag.store(true);
-
-    // Interrupt any blocked snd_pcm_writei calls
-    if (aud_handle) snd_pcm_drop(aud_handle);
-    if (au1_handle) snd_pcm_drop(au1_handle);
-
-    aud_channel.cv.notify_one();
-    au1_channel.cv.notify_one();
-
-    if (aud_writer_thread.joinable()) aud_writer_thread.join();
-    if (au1_writer_thread.joinable()) au1_writer_thread.join();
+    delete aud_writer;
+    delete au1_writer;
 
     if (aud_handle) snd_pcm_close(aud_handle);
     if (au1_handle) snd_pcm_close(au1_handle);
 }
 
-void AudioOutput::WriterThread(snd_pcm_t* handle, AudioChannel& channel, const char* name)
-{
-    pthread_setname_np(pthread_self(), name);
-
-    while (!quit_flag.load())
-    {
-        std::vector<uint8_t> packet;
-        {
-            std::unique_lock<std::mutex> lk(channel.mutex);
-            channel.cv.wait(lk, [&] {
-                return quit_flag.load() || channel.flush_requested || !channel.queue.empty();
-            });
-
-            if (quit_flag.load()) break;
-
-            if (channel.flush_requested) {
-                std::queue<std::vector<uint8_t>>().swap(channel.queue);
-                channel.flush_requested = false;
-                snd_pcm_prepare(handle);
-                continue;
-            }
-
-            packet = std::move(channel.queue.front());
-            channel.queue.pop();
-        }
-
-        // Write to ALSA outside the lock
-        snd_pcm_sframes_t framecount = snd_pcm_bytes_to_frames(handle, packet.size());
-
-        // Check for accumulated latency and resync if needed
-        snd_pcm_sframes_t delay = 0;
-        if (snd_pcm_delay(handle, &delay) == 0 && delay > framecount * 4) {
-            logw("%s: latency drift detected (%ld frames buffered, threshold %ld), resyncing\n",
-                 name, (long)delay, (long)(framecount * 4));
-            snd_pcm_drop(handle);
-            snd_pcm_prepare(handle);
-        }
-
-        snd_pcm_sframes_t frames = snd_pcm_writei(handle, packet.data(), framecount);
-        if (frames < 0) {
-            frames = snd_pcm_recover(handle, frames, 1);
-            if (frames >= 0) {
-                frames = snd_pcm_writei(handle, packet.data(), framecount);
-            }
-        }
-        if (frames >= 0 && frames < framecount) {
-            loge("Short write (expected %i, wrote %i)\n", (int)framecount, (int)frames);
-        }
-    }
-}
-
 void AudioOutput::MediaPacketAUD(uint64_t timestamp, const byte *buf, int len)
 {
-    if (!aud_handle) return;
-    {
-        std::lock_guard<std::mutex> lk(aud_channel.mutex);
-        aud_channel.queue.emplace(buf, buf + len);
-    }
-    aud_channel.cv.notify_one();
+    if (aud_writer) aud_writer->write(buf, len);
 }
 
 std::vector<uint8_t> AudioOutput::MonoToStereoLeft(const byte *buf, int len)
@@ -131,38 +142,18 @@ std::vector<uint8_t> AudioOutput::MonoToStereoLeft(const byte *buf, int len)
 
 void AudioOutput::MediaPacketAU1(uint64_t timestamp, const byte *buf, int len)
 {
-    if (!au1_handle) return;
-
-    auto stereoData = MonoToStereoLeft(buf, len);
-    {
-        std::lock_guard<std::mutex> lk(au1_channel.mutex);
-        au1_channel.queue.push(std::move(stereoData));
-    }
-    au1_channel.cv.notify_one();
+    if (!au1_writer) return;
+    au1_writer->write(MonoToStereoLeft(buf, len));
 }
 
 void AudioOutput::FlushAUD()
 {
-    if (!aud_handle) return;
-    {
-        std::lock_guard<std::mutex> lk(aud_channel.mutex);
-        aud_channel.flush_requested = true;
-        std::queue<std::vector<uint8_t>>().swap(aud_channel.queue);
-    }
-    snd_pcm_drop(aud_handle);
-    aud_channel.cv.notify_one();
+    if (aud_writer) aud_writer->flush();
 }
 
 void AudioOutput::FlushAU1()
 {
-    if (!au1_handle) return;
-    {
-        std::lock_guard<std::mutex> lk(au1_channel.mutex);
-        au1_channel.flush_requested = true;
-        std::queue<std::vector<uint8_t>>().swap(au1_channel.queue);
-    }
-    snd_pcm_drop(au1_handle);
-    au1_channel.cv.notify_one();
+    if (au1_writer) au1_writer->flush();
 }
 
 snd_pcm_sframes_t MicInput::read_mic_cancelable(snd_pcm_t* mic_handle, void *buffer, snd_pcm_uframes_t size, bool* canceled)
@@ -248,7 +239,7 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
     while(!canceled)
     {
         auto tempBuffer = pool.acquire();
-        snd_pcm_sframes_t frames = read_mic_cancelable(mic_handle, tempBuffer.data(), bufferFrameCount, &canceled);
+        snd_pcm_sframes_t frames = read_mic_cancelable(mic_handle, tempBuffer->data(), bufferFrameCount, &canceled);
         if (frames < 0)
         {
             if (frames == -ESTRPIPE)
@@ -260,21 +251,19 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
                 }
                 else
                 {
-                    frames = read_mic_cancelable(mic_handle, tempBuffer.data(), bufferFrameCount, &canceled);
+                    frames = read_mic_cancelable(mic_handle, tempBuffer->data(), bufferFrameCount, &canceled);
                 }
             }
 
             if (frames < 0)
             {
-                pool.release(std::move(tempBuffer));
                 canceled = true;
                 continue;
             }
         }
         ssize_t bytesRead = snd_pcm_frames_to_bytes(mic_handle, frames);
         //doesn't seem like the timestamp is used so pass 0
-        threadInterface->hu_aap_enc_send_media_packet(1, AA_CH_MIC, HU_PROTOCOL_MESSAGE::MediaDataWithTimestamp, 0, tempBuffer.data(), bytesRead);
-        pool.release(std::move(tempBuffer));
+        threadInterface->hu_queue_enc_send_media_packet(AA_CH_MIC, HU_PROTOCOL_MESSAGE::MediaDataWithTimestamp, 0, tempBuffer->data(), bytesRead);
     }
 
     if ((err = snd_pcm_drop(mic_handle)) < 0)

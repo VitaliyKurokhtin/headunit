@@ -12,28 +12,40 @@
 
 #include "hu_uti.h"
 #include "hu_aap.h"
+#include "buffer_processor.h"
+
+struct AudioCommand
+{
+    enum Type { Data, Flush };
+    Type type = Data;
+    std::vector<uint8_t> data;
+};
+
+class AlsaWriter : public BufferProcessor<AudioCommand>
+{
+    snd_pcm_t* handle_;
+    std::string name_;
+
+protected:
+    void onStarted() override;
+    void onStopping() override;
+    void process(AudioCommand& cmd) override;
+
+public:
+    AlsaWriter(snd_pcm_t* handle, const char* name);
+    void write(const byte* buf, int len);
+    void write(std::vector<uint8_t>&& data);
+    void flush();
+};
 
 class AudioOutput
 {
-    struct AudioChannel {
-        std::queue<std::vector<uint8_t>> queue;
-        std::mutex mutex;
-        std::condition_variable cv;
-        bool flush_requested = false;
-    };
-
     snd_pcm_t* aud_handle = nullptr;
     snd_pcm_t* au1_handle = nullptr;
 
-    AudioChannel aud_channel;
-    AudioChannel au1_channel;
+    AlsaWriter* aud_writer = nullptr;
+    AlsaWriter* au1_writer = nullptr;
 
-    std::atomic<bool> quit_flag{false};
-
-    std::thread aud_writer_thread;
-    std::thread au1_writer_thread;
-
-    void WriterThread(snd_pcm_t* handle, AudioChannel& channel, const char* name);
     std::vector<uint8_t> MonoToStereoLeft(const byte *buf, int len);
 public:
     AudioOutput(const char* outDev = "default");

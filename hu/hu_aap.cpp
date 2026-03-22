@@ -166,6 +166,41 @@
 
   }
 
+  void HUServer::hu_queue_enc_send_message(int chan, uint16_t messageCode, const google::protobuf::MessageLite& message)
+  {
+    const int messageSize = message.ByteSize();
+    const int requiredSize = messageSize + 2;
+    auto buf = std::make_shared<std::vector<uint8_t>>(requiredSize);
+
+    uint16_t* p = reinterpret_cast<uint16_t*>(buf->data());
+    *p = htobe16(messageCode);
+
+    if (!message.SerializeToArray(p + 1, messageSize))
+    {
+      loge("hu_queue_enc_send_message: SerializeToArray failed for %s", message.GetTypeName().c_str());
+      return;
+    }
+
+    logd("Queue send %s on channel %i %s", message.GetTypeName().c_str(), chan, chan_get(chan));
+    sender_thread->enqueue(0, chan, std::move(buf), -1);
+  }
+
+  void HUServer::hu_queue_enc_send_media_packet(int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen)
+  {
+    const int requiredSize = bufferLen + 2 + 8;
+    auto buf = std::make_shared<std::vector<uint8_t>>(requiredSize);
+
+    uint16_t* p = reinterpret_cast<uint16_t*>(buf->data());
+    *p++ = htobe16(messageCode);
+
+    uint64_t* ts = reinterpret_cast<uint64_t*>(p);
+    *ts++ = htobe64(timeStamp);
+
+    memcpy(ts, buffer, bufferLen);
+
+    sender_thread->enqueue(0, chan, std::move(buf), -1);
+  }
+
   int HUServer::hu_aap_enc_send_media_packet(int retry, int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout)
   {
     std::lock_guard<std::mutex> lk(send_mutex);

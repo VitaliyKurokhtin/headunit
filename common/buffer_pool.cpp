@@ -8,15 +8,25 @@ BufferPool::BufferPool(size_t bufferSize, size_t prealloc)
         pool_.emplace_back(bufferSize);
 }
 
-BufferPool::Buffer BufferPool::acquire()
+std::shared_ptr<BufferPool::Buffer> BufferPool::acquire()
 {
-    std::lock_guard<std::mutex> lk(mutex_);
-    if (pool_.empty())
-        return Buffer(bufferSize_);
+    Buffer buf;
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        if (!pool_.empty())
+        {
+            buf = std::move(pool_.back());
+            pool_.pop_back();
+        }
+    }
+    if (buf.empty())
+        buf.resize(bufferSize_);
 
-    Buffer buf = std::move(pool_.back());
-    pool_.pop_back();
-    return buf;
+    return std::shared_ptr<Buffer>(new Buffer(std::move(buf)),
+        [this](Buffer* p) {
+            release(std::move(*p));
+            delete p;
+        });
 }
 
 void BufferPool::release(Buffer&& buf)
