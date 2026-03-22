@@ -11,7 +11,7 @@
 using json = nlohmann::json;
 
 MazdaEventCallbacks::MazdaEventCallbacks(DBus::Connection& serviceBus, DBus::Connection& hmiBus)
-    : micInput("mic")
+    : micInput("mic", 2 + 8) // messageCode + timestamp padding for zero-copy send
     , serviceBus(serviceBus)
     , hmiBus(hmiBus)
     , connected(false)

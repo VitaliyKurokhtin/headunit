@@ -185,20 +185,16 @@
     sender_thread->enqueue(0, chan, std::move(buf), -1);
   }
 
-  void HUServer::hu_queue_enc_send_media_packet(int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen)
+  void HUServer::hu_queue_enc_send_media_packet(int chan, uint16_t messageCode, uint64_t timeStamp, std::shared_ptr<std::vector<uint8_t>> buffer, int dataLen)
   {
-    const int requiredSize = bufferLen + 2 + 8;
-    auto buf = std::make_shared<std::vector<uint8_t>>(requiredSize);
-
-    uint16_t* p = reinterpret_cast<uint16_t*>(buf->data());
+    // Header: messageCode(2) + timestamp(8) = 10 bytes at offset 0
+    uint16_t* p = reinterpret_cast<uint16_t*>(buffer->data());
     *p++ = htobe16(messageCode);
 
     uint64_t* ts = reinterpret_cast<uint64_t*>(p);
-    *ts++ = htobe64(timeStamp);
+    *ts = htobe64(timeStamp);
 
-    memcpy(ts, buffer, bufferLen);
-
-    sender_thread->enqueue(0, chan, std::move(buf), -1);
+    sender_thread->enqueue(0, chan, std::move(buffer), -1, 10 + dataLen);
   }
 
   int HUServer::hu_aap_enc_send_media_packet(int retry, int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout)

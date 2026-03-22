@@ -60,13 +60,14 @@ public:
 class MicInput
 {
     std::string micDevice;
+    size_t bufferStartPadding;
     std::thread mic_readthread;
     int cancelPipeRead = -1, cancelPipeWrite = -1;
 
     snd_pcm_sframes_t read_mic_cancelable(snd_pcm_t* mic_handle, void *buffer, snd_pcm_uframes_t size, bool* canceled);
     void MicThreadMain(IHUAnyThreadInterface* threadInterface);
 public:
-    MicInput(const std::string& micDevice = "default");
+    MicInput(const std::string& micDevice = "default", size_t bufferStartPadding = 0);
     ~MicInput();
 
     void Start(IHUAnyThreadInterface* threadInterface);

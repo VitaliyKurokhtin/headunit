@@ -234,12 +234,12 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
     snd_pcm_get_params(mic_handle, &buffer_size, &period_size);
     const size_t tempSize = snd_pcm_frames_to_bytes(mic_handle, period_size);
     const snd_pcm_sframes_t bufferFrameCount = period_size;
-    BufferPool pool(tempSize, 2);
+    BufferPool pool(bufferStartPadding + tempSize, 2);
     bool canceled = false;
     while(!canceled)
     {
         auto tempBuffer = pool.acquire();
-        snd_pcm_sframes_t frames = read_mic_cancelable(mic_handle, tempBuffer->data(), bufferFrameCount, &canceled);
+        snd_pcm_sframes_t frames = read_mic_cancelable(mic_handle, tempBuffer->data() + bufferStartPadding, bufferFrameCount, &canceled);
         if (frames < 0)
         {
             if (frames == -ESTRPIPE)
@@ -251,7 +251,7 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
                 }
                 else
                 {
-                    frames = read_mic_cancelable(mic_handle, tempBuffer->data(), bufferFrameCount, &canceled);
+                    frames = read_mic_cancelable(mic_handle, tempBuffer->data() + bufferStartPadding, bufferFrameCount, &canceled);
                 }
             }
 
@@ -263,7 +263,7 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
         }
         ssize_t bytesRead = snd_pcm_frames_to_bytes(mic_handle, frames);
         //doesn't seem like the timestamp is used so pass 0
-        threadInterface->hu_queue_enc_send_media_packet(AA_CH_MIC, HU_PROTOCOL_MESSAGE::MediaDataWithTimestamp, 0, tempBuffer->data(), bytesRead);
+        threadInterface->hu_queue_enc_send_media_packet(AA_CH_MIC, HU_PROTOCOL_MESSAGE::MediaDataWithTimestamp, 0, std::move(tempBuffer), bytesRead);
     }
 
     if ((err = snd_pcm_drop(mic_handle)) < 0)
@@ -274,7 +274,7 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
     snd_pcm_close(mic_handle);
 }
 
-MicInput::MicInput(const std::string& micDevice) : micDevice(micDevice)
+MicInput::MicInput(const std::string& micDevice, size_t bufferStartPadding) : micDevice(micDevice), bufferStartPadding(bufferStartPadding)
 {
     int cancelPipe[2];
     if (pipe(cancelPipe) < 0)

@@ -17,12 +17,13 @@ void HUSenderThread::enqueue(int retry, int chan, const byte* buf, int len, int 
     enqueueEntry(std::move(req));
 }
 
-void HUSenderThread::enqueue(int retry, int chan, std::shared_ptr<std::vector<uint8_t>> buf, int overrideTimeout)
+void HUSenderThread::enqueue(int retry, int chan, std::shared_ptr<std::vector<uint8_t>> buf, int overrideTimeout, int dataLen)
 {
     SendRequest req;
     req.retry = retry;
     req.chan = chan;
     req.overrideTimeout = overrideTimeout;
+    req.dataLen = dataLen;
     req.shared_data = std::move(buf);
 
     enqueueEntry(std::move(req));

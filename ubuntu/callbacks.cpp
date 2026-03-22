@@ -5,6 +5,7 @@
 #include "config.h"
 
 DesktopEventCallbacks::DesktopEventCallbacks() :
+    micInput("default", 10),
     connected(false),
     videoFocus(false),
     audioFocus(false)
