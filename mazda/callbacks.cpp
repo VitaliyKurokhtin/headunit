@@ -165,12 +165,10 @@ void MazdaEventCallbacks::VideoFocusHappened(bool hasFocus, bool unrequested) {
     if ((bool)videoOutput != hasFocus) {
         videoOutput.reset(hasFocus ? new VideoOutput(this) : nullptr);
     }
-    g_hu->hu_queue_command([hasFocus, unrequested] (IHUConnectionThreadInterface & s) {
-        HU::VideoFocus videoFocusGained;
-        videoFocusGained.set_mode(hasFocus ? HU::VIDEO_FOCUS_MODE_FOCUSED : HU::VIDEO_FOCUS_MODE_UNFOCUSED);
-        videoFocusGained.set_unrequested(unrequested);
-        s.hu_aap_enc_send_message(0, AA_CH_VID, HU_MEDIA_CHANNEL_MESSAGE::VideoFocus, videoFocusGained);
-    });
+    HU::VideoFocus videoFocusGained;
+    videoFocusGained.set_mode(hasFocus ? HU::VIDEO_FOCUS_MODE_FOCUSED : HU::VIDEO_FOCUS_MODE_UNFOCUSED);
+    videoFocusGained.set_unrequested(unrequested);
+    g_hu->hu_queue_enc_send_message(AA_CH_VID, HU_MEDIA_CHANNEL_MESSAGE::VideoFocus, videoFocusGained);
 }
 
 void MazdaEventCallbacks::AudioFocusHappend(AudioManagerClient::FocusType type) {
@@ -189,23 +187,21 @@ void MazdaEventCallbacks::AudioFocusHappend(AudioManagerClient::FocusType type) 
             break;
     }
     AudioOutput* audio = audioOutput.get();
-    g_hu->hu_queue_command([response, audio, type](IHUConnectionThreadInterface & s) {
-        if (audio) {
-            switch(type) {
-                case AudioManagerClient::FocusType::NONE:
-                    audio->FlushAUD();
-                    audio->FlushAU1();
-                    break;
-                case AudioManagerClient::FocusType::TRANSIENT:
-                    audio->FlushAUD();
-                    break;
-                case AudioManagerClient::FocusType::PERMANENT:
-                    audio->FlushAU1();
-                    break;
-            }
+    if (audio) {
+        switch(type) {
+            case AudioManagerClient::FocusType::NONE:
+                audio->FlushAUD();
+                audio->FlushAU1();
+                break;
+            case AudioManagerClient::FocusType::TRANSIENT:
+                audio->FlushAUD();
+                break;
+            case AudioManagerClient::FocusType::PERMANENT:
+                audio->FlushAU1();
+                break;
         }
-        s.hu_aap_enc_send_message(0, AA_CH_CTR, HU_PROTOCOL_MESSAGE::AudioFocusResponse, response);
-    });
+    }
+    g_hu->hu_queue_enc_send_message(AA_CH_CTR, HU_PROTOCOL_MESSAGE::AudioFocusResponse, response);
     logd("Sent channel %i HU_PROTOCOL_MESSAGE::AudioFocusResponse %s\n", AA_CH_CTR,  HU::AudioFocusResponse::AUDIO_FOCUS_STATE_Name(response.focus_type()).c_str());
 }
 

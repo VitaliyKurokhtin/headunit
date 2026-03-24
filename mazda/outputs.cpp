@@ -72,24 +72,16 @@ struct TouchScreenState {
 
 static void aa_touch_event(HU::TouchInfo::TOUCH_ACTION action, unsigned int x, unsigned int y, uint64_t ts) {
 
-    g_hu->hu_queue_command([action, x, y, ts](IHUConnectionThreadInterface& s)
-    {
-        HU::InputEvent inputEvent;
-        inputEvent.set_timestamp(ts);
-        HU::TouchInfo* touchEvent = inputEvent.mutable_touch();
-        touchEvent->set_action(action);
-        HU::TouchInfo::Location* touchLocation = touchEvent->add_location();
-        touchLocation->set_x(x);
-        touchLocation->set_y(y);
-        touchLocation->set_pointer_id(0);
+    HU::InputEvent inputEvent;
+    inputEvent.set_timestamp(ts);
+    HU::TouchInfo* touchEvent = inputEvent.mutable_touch();
+    touchEvent->set_action(action);
+    HU::TouchInfo::Location* touchLocation = touchEvent->add_location();
+    touchLocation->set_x(x);
+    touchLocation->set_y(y);
+    touchLocation->set_pointer_id(0);
 
-        /* Send touch event */
-
-        int ret = s.hu_aap_enc_send_message(0, AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent);
-        if (ret < 0) {
-            printf("aa_touch_event(): hu_aap_enc_send() failed with (%d)\n", ret);
-        }
-    });
+    g_hu->hu_queue_enc_send_message(AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent);
 }
 
 static uint64_t get_timestamp(struct input_event& ii)
@@ -370,26 +362,23 @@ void VideoOutput::input_thread_func()
 
                     if (scanCode != 0 || scrollAmount != 0)
                     {
-                        g_hu->hu_queue_command([timeStamp, scanCode, scrollAmount, isPressed, longPress](IHUConnectionThreadInterface& s)
+                        HU::InputEvent inputEvent;
+                        inputEvent.set_timestamp(timeStamp);
+                        if (scanCode != 0)
                         {
-                            HU::InputEvent inputEvent;
-                            inputEvent.set_timestamp(timeStamp);
-                            if (scanCode != 0)
-                            {
-                                HU::ButtonInfo* buttonInfo = inputEvent.mutable_button()->add_button();
-                                buttonInfo->set_is_pressed(isPressed);
-                                buttonInfo->set_meta(0);
-                                buttonInfo->set_long_press(longPress);
-                                buttonInfo->set_scan_code(scanCode);
-                            }
-                            if (scrollAmount != 0)
-                            {
-                                HU::RelativeInputEvent* rel = inputEvent.mutable_rel_event()->mutable_event();
-                                rel->set_delta(scrollAmount);
-                                rel->set_scan_code(HUIB_SCROLLWHEEL);
-                            }
-                            s.hu_aap_enc_send_message(0, AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent);
-                        });
+                            HU::ButtonInfo* buttonInfo = inputEvent.mutable_button()->add_button();
+                            buttonInfo->set_is_pressed(isPressed);
+                            buttonInfo->set_meta(0);
+                            buttonInfo->set_long_press(longPress);
+                            buttonInfo->set_scan_code(scanCode);
+                        }
+                        if (scrollAmount != 0)
+                        {
+                            HU::RelativeInputEvent* rel = inputEvent.mutable_rel_event()->mutable_event();
+                            rel->set_delta(scrollAmount);
+                            rel->set_scan_code(HUIB_SCROLLWHEEL);
+                        }
+                        g_hu->hu_queue_enc_send_message(AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent);
                     }
                 }
             }

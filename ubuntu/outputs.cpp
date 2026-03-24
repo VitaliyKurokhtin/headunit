@@ -98,23 +98,16 @@ void VideoOutput::aa_touch_event(SDL_Window *window, HU::TouchInfo::TOUCH_ACTION
     y = (unsigned int) (normy * 480);
 #endif
 
-    g_hu->hu_queue_command([action, x, y](IHUConnectionThreadInterface & s) {
-        HU::InputEvent inputEvent;
-        inputEvent.set_timestamp(get_cur_timestamp());
-        HU::TouchInfo* touchEvent = inputEvent.mutable_touch();
-        touchEvent->set_action(action);
-        HU::TouchInfo::Location* touchLocation = touchEvent->add_location();
-        touchLocation->set_x(x);
-        touchLocation->set_y(y);
-        touchLocation->set_pointer_id(0);
+    HU::InputEvent inputEvent;
+    inputEvent.set_timestamp(get_cur_timestamp());
+    HU::TouchInfo* touchEvent = inputEvent.mutable_touch();
+    touchEvent->set_action(action);
+    HU::TouchInfo::Location* touchLocation = touchEvent->add_location();
+    touchLocation->set_x(x);
+    touchLocation->set_y(y);
+    touchLocation->set_pointer_id(0);
 
-        /* Send touch event */
-
-        int ret = s.hu_aap_enc_send_message(0, AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent);
-        if (ret < 0) {
-            printf("aa_touch_event(): hu_aap_enc_send() failed with (%d)\n", ret);
-        }
-    });
+    g_hu->hu_queue_enc_send_message(AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent);
 }
 
 gboolean VideoOutput::sdl_poll_event_wrapper(gpointer data){
@@ -181,9 +174,7 @@ gboolean VideoOutput::sdl_poll_event() {
                         rel->set_delta(key->keysym.sym == SDLK_LEFT ? -1 : 1);
                         rel->set_scan_code(HUIB_SCROLLWHEEL);
 
-                        g_hu->hu_queue_command([inputEvent2](IHUConnectionThreadInterface & s) {
-                            s.hu_aap_enc_send_message(0, AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent2);
-                        });
+                        g_hu->hu_queue_enc_send_message(AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent2);
                     }
                 } else if (key->keysym.sym == SDLK_l) {
                     buttonInfo->set_scan_code(HUIB_MEDIA);
@@ -229,10 +220,7 @@ gboolean VideoOutput::sdl_poll_event() {
                                             | HU::SensorEvent::DrivingStatus::DRIVE_STATUS_NO_CONFIG
                                             | HU::SensorEvent::DrivingStatus::DRIVE_STATUS_LIMIT_MESSAGE_LEN);
 
-                        g_hu->hu_queue_command([sensorEvent](IHUConnectionThreadInterface& s)
-                        {
-                            s.hu_aap_enc_send_message(0, AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
-                        });
+                        g_hu->hu_queue_enc_send_message(AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
 
                         printf("Sending fake location.");
                     }
@@ -242,19 +230,14 @@ gboolean VideoOutput::sdl_poll_event() {
                         notificationReq.set_id("test");
                         notificationReq.set_text("This is a test");
 
-                        g_hu->hu_queue_command([notificationReq](IHUConnectionThreadInterface& s)
-                        {
-                            s.hu_aap_enc_send_message(0, AA_CH_NOT, HU_GENERIC_NOTIFICATIONS_CHANNEL_MESSAGE::GenericNotificationRequest, notificationReq);
-                        });
+                        g_hu->hu_queue_enc_send_message(AA_CH_NOT, HU_GENERIC_NOTIFICATIONS_CHANNEL_MESSAGE::GenericNotificationRequest, notificationReq);
 
                         printf("Sending notification.");
                     }
                 }
 
                 if (buttonInfo->has_scan_code()) {
-                    g_hu->hu_queue_command([inputEvent](IHUConnectionThreadInterface & s) {
-                        s.hu_aap_enc_send_message(0, AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent);
-                    });
+                    g_hu->hu_queue_enc_send_message(AA_CH_TOU, HU_INPUT_CHANNEL_MESSAGE::InputEvent, inputEvent);
                 }
             }
             break;
@@ -366,12 +349,10 @@ void VideoOutput::MediaPacket(uint64_t timestamp, const byte *buf, int len) {
 void VideoOutput::SendNightMode()
 {
     bool nm = nightmode;
-    g_hu->hu_queue_command([nm](IHUConnectionThreadInterface & s) {
-        HU::SensorEvent sensorEvent;
-        sensorEvent.add_night_mode()->set_is_night(nm);
+    HU::SensorEvent sensorEvent;
+    sensorEvent.add_night_mode()->set_is_night(nm);
 
-        s.hu_aap_enc_send_message(0, AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
-    });
+    g_hu->hu_queue_enc_send_message(AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
 
     printf("Nightmode: %s\n", nm ? "On" : "Off");
 }

@@ -79,9 +79,7 @@ void DesktopEventCallbacks::AudioFocusRequest(int chan, const HU::AudioFocusRequ
             audioFocus = true;
         }
 
-        g_hu->hu_queue_command([chan, response](IHUConnectionThreadInterface & s) {
-            s.hu_aap_enc_send_message(0, chan, HU_PROTOCOL_MESSAGE::AudioFocusResponse, response);
-        });
+        g_hu->hu_queue_enc_send_message(chan, HU_PROTOCOL_MESSAGE::AudioFocusResponse, response);
         return false;
     });
 }
@@ -112,12 +110,10 @@ void DesktopEventCallbacks::VideoFocusHappened(bool hasFocus, VIDEO_FOCUS_REQUES
         }
         videoFocus = hasFocus;
         bool unrequested = videoFocusRequestor != VIDEO_FOCUS_REQUESTOR::ANDROID_AUTO;
-        g_hu->hu_queue_command([hasFocus, unrequested](IHUConnectionThreadInterface & s) {
-            HU::VideoFocus videoFocusGained;
-            videoFocusGained.set_mode(hasFocus ? HU::VIDEO_FOCUS_MODE_FOCUSED : HU::VIDEO_FOCUS_MODE_UNFOCUSED);
-            videoFocusGained.set_unrequested(unrequested);
-            s.hu_aap_enc_send_message(0, AA_CH_VID, HU_MEDIA_CHANNEL_MESSAGE::VideoFocus, videoFocusGained);
-        });
+        HU::VideoFocus videoFocusGained;
+        videoFocusGained.set_mode(hasFocus ? HU::VIDEO_FOCUS_MODE_FOCUSED : HU::VIDEO_FOCUS_MODE_UNFOCUSED);
+        videoFocusGained.set_unrequested(unrequested);
+        g_hu->hu_queue_enc_send_message(AA_CH_VID, HU_MEDIA_CHANNEL_MESSAGE::VideoFocus, videoFocusGained);
         return false;
     });
 }
