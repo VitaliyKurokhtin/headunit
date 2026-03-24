@@ -629,7 +629,8 @@
 
     HU::PingResponse response;
     response.set_timestamp(request.timestamp());
-    return hu_aap_enc_send_message(0, chan, HU_PROTOCOL_MESSAGE::PingResponse, response);
+    hu_queue_enc_send_message(chan, HU_PROTOCOL_MESSAGE::PingResponse, response);
+    return 0;
   }
 
   int HUServer::hu_handle_NavigationFocusRequest (int chan, byte * buf, int len) {                  // Navigation Focus Request
@@ -641,7 +642,8 @@
 
     HU::NavigationFocusResponse response;
     response.set_focus_type(2); // Gained / Gained Transient ?
-    return hu_aap_enc_send_message(0, chan, HU_PROTOCOL_MESSAGE::NavigationFocusResponse, response);
+    hu_queue_enc_send_message(chan, HU_PROTOCOL_MESSAGE::NavigationFocusResponse, response);
+    return 0;
   }
 
   int HUServer::hu_handle_ShutdownRequest (int chan, byte * buf, int len) {                  // Byebye Request
