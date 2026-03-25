@@ -3,8 +3,8 @@
 
 // --- AlsaWriter ---
 
-AlsaWriter::AlsaWriter(snd_pcm_t* handle, const char* name)
-    : handle_(handle), name_(name)
+AlsaWriter::AlsaWriter(snd_pcm_t* handle, const char* name, bool mono_to_stereo)
+    : handle_(handle), name_(name), mono_to_stereo_(mono_to_stereo)
 {
 }
 
@@ -18,12 +18,29 @@ void AlsaWriter::onStopping()
     if (handle_) snd_pcm_drop(handle_);
 }
 
+void AlsaWriter::applyMonoToStereo(std::vector<uint8_t>& data)
+{
+    int sampleCount = data.size() / sizeof(int16_t);
+    std::vector<uint8_t> stereoData(sampleCount * 2 * sizeof(int16_t));
+    const int16_t* monoSamples = reinterpret_cast<const int16_t*>(data.data());
+    int16_t* stereoSamples = reinterpret_cast<int16_t*>(stereoData.data());
+    for (int i = 0; i < sampleCount; i++) {
+        stereoSamples[i * 2] = monoSamples[i];
+        stereoSamples[i * 2 + 1] = 0;
+    }
+    data = std::move(stereoData);
+}
+
 void AlsaWriter::process(AudioCommand& cmd)
 {
     if (cmd.type == AudioCommand::Flush) {
         snd_pcm_drop(handle_);
         snd_pcm_prepare(handle_);
         return;
+    }
+
+    if (mono_to_stereo_) {
+        applyMonoToStereo(cmd.data);
     }
 
     snd_pcm_sframes_t framecount = snd_pcm_bytes_to_frames(handle_, cmd.data.size());
@@ -108,7 +125,7 @@ AudioOutput::AudioOutput(const char *outDev)
         aud_writer->start();
     }
     if (au1_handle) {
-        au1_writer = new AlsaWriter(au1_handle, "au1_writer");
+        au1_writer = new AlsaWriter(au1_handle, "au1_writer", true);
         au1_writer->start();
     }
 }
@@ -127,23 +144,9 @@ void AudioOutput::MediaPacketAUD(uint64_t timestamp, const byte *buf, int len)
     if (aud_writer) aud_writer->write(buf, len);
 }
 
-std::vector<uint8_t> AudioOutput::MonoToStereoLeft(const byte *buf, int len)
-{
-    int sampleCount = len / sizeof(int16_t);
-    std::vector<uint8_t> stereoData(sampleCount * 2 * sizeof(int16_t));
-    const int16_t* monoSamples = reinterpret_cast<const int16_t*>(buf);
-    int16_t* stereoSamples = reinterpret_cast<int16_t*>(stereoData.data());
-    for (int i = 0; i < sampleCount; i++) {
-        stereoSamples[i * 2] = monoSamples[i];  // left
-        stereoSamples[i * 2 + 1] = 0;           // right (silent)
-    }
-    return stereoData;
-}
-
 void AudioOutput::MediaPacketAU1(uint64_t timestamp, const byte *buf, int len)
 {
-    if (!au1_writer) return;
-    au1_writer->write(MonoToStereoLeft(buf, len));
+    if (au1_writer) au1_writer->write(buf, len);
 }
 
 void AudioOutput::FlushAUD()

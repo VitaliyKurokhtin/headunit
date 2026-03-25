@@ -25,6 +25,9 @@ class AlsaWriter : public BufferProcessor<AudioCommand>
 {
     snd_pcm_t* handle_;
     std::string name_;
+    bool mono_to_stereo_;
+
+    void applyMonoToStereo(std::vector<uint8_t>& data);
 
 protected:
     void onStarted() override;
@@ -32,7 +35,7 @@ protected:
     void process(AudioCommand& cmd) override;
 
 public:
-    AlsaWriter(snd_pcm_t* handle, const char* name);
+    AlsaWriter(snd_pcm_t* handle, const char* name, bool mono_to_stereo = false);
     void write(const byte* buf, int len);
     void write(std::vector<uint8_t>&& data);
     void flush();
@@ -46,7 +49,6 @@ class AudioOutput
     AlsaWriter* aud_writer = nullptr;
     AlsaWriter* au1_writer = nullptr;
 
-    std::vector<uint8_t> MonoToStereoLeft(const byte *buf, int len);
 public:
     AudioOutput(const char* outDev = "default");
     ~AudioOutput();
