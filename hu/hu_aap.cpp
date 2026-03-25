@@ -616,7 +616,8 @@
 
     callbacks.CustomizeCarInfo(carInfo);
 
-    return hu_aap_enc_send_message(0, chan, HU_PROTOCOL_MESSAGE::ServiceDiscoveryResponse, carInfo);
+    hu_queue_enc_send_message(chan, HU_PROTOCOL_MESSAGE::ServiceDiscoveryResponse, carInfo);
+    return 0;
   }
 
 
@@ -806,7 +807,8 @@
     HU::SensorStartResponse response;
     response.set_status(HU::STATUS_OK);
 
-    return hu_aap_enc_send_message(0, chan, HU_SENSOR_CHANNEL_MESSAGE::SensorStartResponse, response);
+    hu_queue_enc_send_message(chan, HU_SENSOR_CHANNEL_MESSAGE::SensorStartResponse, response);
+    return 0;
   }
 
 
@@ -820,7 +822,8 @@
     HU::BindingResponse response;
     response.set_status(HU::STATUS_OK);
 
-    return hu_aap_enc_send_message(0, chan, HU_INPUT_CHANNEL_MESSAGE::BindingResponse, response);
+    hu_queue_enc_send_message(chan, HU_INPUT_CHANNEL_MESSAGE::BindingResponse, response);
+    return 0;
   }
 
   int HUServer::hu_handle_MediaAck (int chan, byte * buf, int len) {
@@ -956,7 +959,8 @@
       response.set_already_paired(true);
       response.set_status(HU::BluetoothPairingResponse::PAIRING_STATUS_1);
 
-      return hu_aap_enc_send_message(0, chan, HU_BLUETOOTH_CHANNEL_MESSAGE::BluetoothPairingResponse, response);
+      hu_queue_enc_send_message(chan, HU_BLUETOOTH_CHANNEL_MESSAGE::BluetoothPairingResponse, response);
+      return 0;
   }
 
   int HUServer::hu_handle_BluetoothAuthData(int chan, byte * buf, int len) {
