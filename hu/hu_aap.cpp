@@ -855,7 +855,7 @@
     return (0);
   }
 
-  int HUServer::hu_handle_MediaDataWithTimestamp (int chan, byte * buf, int len) {
+  int HUServer::hu_handle_MediaDataWithTimestamp (int chan, byte * buf, int len, bool is_last_frame) {
 
     uint64_t timestamp = be64toh(*((uint64_t*)buf));
     logd("Media timestamp %s %llu", chan_get(chan), timestamp);
@@ -866,11 +866,12 @@
       return ret;
     }
 
-    sender_thread->enqueue(0, chan, pre_serialized_media_ack[chan], 0);
+    if (is_last_frame)
+      sender_thread->enqueue(0, chan, pre_serialized_media_ack[chan], 0);
     return 0;
   }
 
-  int HUServer::hu_handle_MediaData(int chan, byte * buf, int len) {
+  int HUServer::hu_handle_MediaData(int chan, byte * buf, int len, bool is_last_frame) {
 
     int ret  = callbacks.MediaPacket(chan, 0, buf, len);
     if (ret < 0)
@@ -878,7 +879,8 @@
       return ret;
     }
 
-    sender_thread->enqueue(0, chan, pre_serialized_media_ack[chan], 0);
+    if (is_last_frame)
+      sender_thread->enqueue(0, chan, pre_serialized_media_ack[chan], 0);
     return 0;
   }
 
@@ -1026,7 +1028,7 @@
       return 0;
     }
 
-  int HUServer::iaap_msg_process (int chan, uint16_t msg_type, byte * buf, int len) {
+  int HUServer::iaap_msg_process (int chan, uint16_t msg_type, byte * buf, int len, bool is_last_frame) {
 
     if (ena_log_verbo)
       logd ("iaap_msg_process msg_type: %d  len: %d  buf: %p", msg_type, len, buf);
@@ -1063,9 +1065,9 @@
         switch((HU_PROTOCOL_MESSAGE)msg_type)
         {
           case HU_PROTOCOL_MESSAGE::MediaDataWithTimestamp:
-            return hu_handle_MediaDataWithTimestamp(chan, buf, len);
+            return hu_handle_MediaDataWithTimestamp(chan, buf, len, is_last_frame);
           case HU_PROTOCOL_MESSAGE::MediaData:
-            return hu_handle_MediaData(chan, buf, len);
+            return hu_handle_MediaData(chan, buf, len, is_last_frame);
           case HU_PROTOCOL_MESSAGE::ServiceDiscoveryRequest:
             return hu_handle_ServiceDiscoveryRequest(chan, buf, len);
           case HU_PROTOCOL_MESSAGE::ChannelOpenRequest:
@@ -1416,154 +1418,110 @@
     return (0);
   }
 
-  int HUServer::hu_aap_recv_process (int tmo) {                                          //
-                                                                        // Terminate unless started or starting (we need to process when starting)
+  int HUServer::hu_aap_recv_process (int tmo) {
     if (iaap_state != hu_STATE_STARTED && iaap_state != hu_STATE_STARTIN) {
       loge ("CHECK: iaap_state: %d (%s)", iaap_state, state_get (iaap_state));
       return (-1);
     }
 
-    int ret = 0;
     errno = 0;
     int min_size_hdr = 4;
-    int have_len = 0;                                                   // Length remaining to process for all sub-packets plus 4/8 byte headers
+    int have_len = 0;
 
-    bool has_last = false;
-    bool has_first = false;
-    int chan = -1;
-    while (!has_last)
-    {                                              // While length remaining to process,... Process Rx packet:
-      have_len = hu_aap_tra_recv (enc_buf, min_size_hdr, tmo);
-      if (have_len == 0 && !has_first)
-      {
-        return 0;
-      }
+    // Read frame header
+    have_len = hu_aap_tra_recv (enc_buf, min_size_hdr, tmo);
+    if (have_len == 0)
+      return 0;
 
-      if (have_len < min_size_hdr) {                                      // If we don't have a full 6 byte header at least...
-        loge ("Recv have_len: %d", have_len);
-        return (-1);
-      }
-
-      if (ena_log_verbo) {
-        logd ("Recv while (have_len > 0): %d", have_len);
-        hex_dump ("LR: ", 16, enc_buf, have_len);
-      }
-      int cur_chan = (int) enc_buf [0];                                         // Channel
-      if (cur_chan != chan && chan >= 0)
-      {
-          logd ("Interleaved channels, preserving incomplete packet for chan %s", chan_get (chan));
-          channel_assembly_buffers[chan] = temp_assembly_buffer;
-          temp_assembly_buffer = NULL;
-          has_first = has_last = false;
-          //return (-1);
-      }
-      chan = cur_chan;
-
-      int flags = enc_buf [1];                                              // Flags
-      int frame_len = be16toh(*((uint16_t*)&enc_buf[2]));
-
-      logd("Frame flags %i len %i", flags, frame_len);
-
-      if (frame_len > MAX_FRAME_PAYLOAD_SIZE)
-      {
-          loge ("Too big");
-          return (-1);
-      }
-
-      int header_size = 4;
-      bool has_total_size_header = false;
-      if ((flags & HU_FRAME_FIRST_FRAME) & !(flags & HU_FRAME_LAST_FRAME))
-      {
-        //if first but not last, next 4 is total size
-        has_total_size_header = true;
-        header_size += 4;
-      }
-
-      int remaining_bytes_in_frame = (frame_len + header_size) - have_len;
-      while(remaining_bytes_in_frame > 0)
-      {
-        logd("Getting more %i", remaining_bytes_in_frame);
-        int got_bytes = hu_aap_tra_recv (&enc_buf[have_len], remaining_bytes_in_frame, tmo);     // Get Rx packet from Transport
-        if (got_bytes < 0) {                                      // If we don't have a full 6 byte header at least...
-          loge ("Recv got_bytes: %d", got_bytes);
-          return (-1);
-        }
-        have_len += got_bytes;
-        remaining_bytes_in_frame -= got_bytes;
-      }
-
-      auto buffer = channel_assembly_buffers.find(chan);
-      if (buffer != channel_assembly_buffers.end()) // Have old buffer with incomplete data for channel
-      {
-        logd ("Found existing buffer for chan %s", chan_get (chan));
-        temp_assembly_buffer = buffer->second;
-      }
-      else if (temp_assembly_buffer == NULL) // Old buffer had incomplete data and was preserved, need to create new one
-      {
-        logd ("Created new buffer for chan %s", chan_get (chan));
-        temp_assembly_buffer = new std::vector<uint8_t>();
-      }
-
-      if (flags & HU_FRAME_FIRST_FRAME)
-      {
-        temp_assembly_buffer->clear(); // It's the first frame and old data may still be there, so clear
-      }
-      else if (!has_first && temp_assembly_buffer->size() == 0) // No first frame yet and buffer is empty
-      {
-        loge ("No HU_FRAME_FIRST_FRAME, and no incomplete buffer for chan %s", chan_get (chan));
-        return (-1);
-      }
-
-      has_first = true;
-      has_last = (flags & HU_FRAME_LAST_FRAME) != 0;
-
-      if (has_total_size_header)
-      {
-        uint32_t total_size = be32toh(*((uint32_t*)&enc_buf[4]));
-        logd("First only, total len %u", total_size);
-        temp_assembly_buffer->reserve(total_size);
-      }
-      else
-      {
-        temp_assembly_buffer->reserve(frame_len);
-      }
-
-
-      if (flags & HU_FRAME_ENCRYPTED)
-      {
-          size_t cur_vec = temp_assembly_buffer->size();
-          temp_assembly_buffer->resize(cur_vec + frame_len); //just incase
-
-          int bytes_read = hu_ssl_decrypt(&enc_buf[header_size], frame_len, &(*temp_assembly_buffer)[cur_vec], frame_len);
-          if (bytes_read <= 0) {
-            loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
-            return (-1);
-          }
-          if (ena_log_verbo)
-            logd ("hu_ssl_decrypt() bytes_read: %d", bytes_read);
-
-          temp_assembly_buffer->resize(cur_vec + bytes_read);
-      }
-      else
-      {
-          temp_assembly_buffer->insert(temp_assembly_buffer->end(), &enc_buf[header_size], &enc_buf[frame_len+header_size]);
-      }
+    if (have_len < min_size_hdr) {
+      loge ("Recv have_len: %d", have_len);
+      return (-1);
     }
 
-    const int buf_len = temp_assembly_buffer->size();
-    if (buf_len >= 2)
+    if (ena_log_verbo) {
+      logd ("Recv have_len: %d", have_len);
+      hex_dump ("LR: ", 16, enc_buf, have_len);
+    }
+    int chan = (int) enc_buf [0];
+    int flags = enc_buf [1];
+    int frame_len = be16toh(*((uint16_t*)&enc_buf[2]));
+
+    logd("%s frame flags %i len %i", chan_get(chan), flags, frame_len);
+
+    if (frame_len > MAX_FRAME_PAYLOAD_SIZE)
     {
-      uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(temp_assembly_buffer->data()));
-
-      //loge ("PROCESSING MESSAGE");
-      ret = iaap_msg_process (chan, msg_type, &(*temp_assembly_buffer)[2], buf_len - 2);          // Decrypt & Process 1 received encrypted message
-      if (ret < 0 && iaap_state != hu_STATE_STOPPED) {                                                    // If error...
-        loge ("Error iaap_msg_process() ret: %d  ", ret);
-        return (ret);
-      }
+        loge ("Too big");
+        return (-1);
     }
 
-    return (ret);                                                       // Return value from the last iaap_recv_dec_process() call; should be 0
+    int header_size = 4;
+    bool has_first = (flags & HU_FRAME_FIRST_FRAME) != 0;
+    bool has_last = (flags & HU_FRAME_LAST_FRAME) != 0;
+    if (has_first & !has_last)
+      header_size += 4; // first-but-not-last: next 4 bytes are total message size
+
+    // Read remaining frame payload
+    int remaining_bytes_in_frame = (frame_len + header_size) - have_len;
+    while(remaining_bytes_in_frame > 0)
+    {
+      logd("Getting more %i", remaining_bytes_in_frame);
+      int got_bytes = hu_aap_tra_recv (&enc_buf[have_len], remaining_bytes_in_frame, tmo);
+      if (got_bytes < 0) {
+        loge ("Recv got_bytes: %d", got_bytes);
+        return (-1);
+      }
+      have_len += got_bytes;
+      remaining_bytes_in_frame -= got_bytes;
+    }
+
+    bool is_stream = (chan == AA_CH_VID || chan == AA_CH_AUD || chan == AA_CH_AU1 || chan == AA_CH_AU2)
+                     && !(flags & HU_FRAME_CONTROL_MESSAGE);
+
+    // Non-stream channels must always be single-frame
+    if (!is_stream && !(has_first && has_last))
+    {
+      loge ("Unexpected multi-frame packet on chan %s, flags %i len %i", chan_get(chan), flags, frame_len);
+      return 0;
+    }
+
+    // Decrypt frame payload
+    byte* payload = &enc_buf[header_size];
+    int payload_len = frame_len;
+
+    if (flags & HU_FRAME_ENCRYPTED)
+    {
+      decryption_buffer->resize(frame_len);
+      int bytes_read = hu_ssl_decrypt(payload, frame_len, decryption_buffer->data(), frame_len);
+      if (bytes_read <= 0) {
+        loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
+        return (-1);
+      }
+      if (ena_log_verbo)
+        logd ("hu_ssl_decrypt() bytes_read: %d", bytes_read);
+      payload = decryption_buffer->data();
+      payload_len = bytes_read;
+    }
+
+    // Stream channels: log partial frames for diagnostics
+    if (is_stream && !(has_first && has_last))
+      logd ("%s partial frame: first=%d last=%d len=%d", chan_get(chan), has_first, has_last, payload_len);
+
+    // Dispatch
+    if (has_first)
+    {
+      // First frame (or single frame) contains [msg_type:2][...payload data...]
+      if (payload_len >= 2)
+      {
+        uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(payload));
+        return iaap_msg_process (chan, msg_type, payload + 2, payload_len - 2, has_last);
+      }
+      return 0;
+    }
+    else
+    {
+      // Continuation frame: raw media data, no msg_type/timestamp header
+      return iaap_msg_process (chan, static_cast<uint16_t>(HU_PROTOCOL_MESSAGE::MediaData), payload, payload_len, has_last);
+    }
   }
 /*
 */

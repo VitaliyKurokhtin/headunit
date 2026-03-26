@@ -230,7 +230,6 @@ protected:
   int iaap_tra_send_tmo = 500;//2;//25;//250;//500;//100;//500;//250;
   // Recv path buffers (used only on hu_thread)
   std::vector<uint8_t>* temp_assembly_buffer = new std::vector<uint8_t>();
-  std::map<int, std::vector<uint8_t>*> channel_assembly_buffers;
   byte enc_buf[MAX_FRAME_SIZE] = {0};
   int32_t channel_session_id[AA_CH_MAX] = {0};
 
@@ -273,7 +272,7 @@ protected:
 
   int ihu_tra_start (HU_TRANSPORT_TYPE transportType, std::string& phoneIpAddress, bool waitForDevice);
   int ihu_tra_stop();
-  int iaap_msg_process (int chan, uint16_t msg_type, byte * buf, int len);
+  int iaap_msg_process (int chan, uint16_t msg_type, byte * buf, int len, bool is_last_frame = true);
 
   int hu_aap_tra_recv (byte * buf, int len, int tmo);                      // Used by intern,                      hu_ssl
   int hu_aap_tra_send (int retry, byte * buf, int len, int tmo);                      // Used by intern,                      hu_ssl
@@ -315,8 +314,8 @@ protected:
   int hu_handle_BindingRequest (int chan, byte * buf, int len);
   int hu_handle_MediaAck (int chan, byte * buf, int len);
   int hu_handle_MicRequest (int chan, byte * buf, int len);
-  int hu_handle_MediaDataWithTimestamp (int chan, byte * buf, int len);
-  int hu_handle_MediaData(int chan, byte * buf, int len);
+  int hu_handle_MediaDataWithTimestamp (int chan, byte * buf, int len, bool is_last_frame);
+  int hu_handle_MediaData(int chan, byte * buf, int len, bool is_last_frame);
   int hu_handle_PhoneStatus(int chan, byte * buf, int len);
   int hu_handle_GenericNotificationResponse(int chan, byte * buf, int len);
   int hu_handle_StartGenericNotifications(int chan, byte * buf, int len);
