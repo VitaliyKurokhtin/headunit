@@ -6,6 +6,8 @@
 AlsaWriter::AlsaWriter(snd_pcm_t* handle, const char* name, bool mono_to_stereo)
     : handle_(handle), name_(name), mono_to_stereo_(mono_to_stereo)
 {
+    if (mono_to_stereo_)
+        stereo_pool_.reset(new BufferPool(8192, 1, true));
 }
 
 void AlsaWriter::onStarted()
@@ -18,17 +20,19 @@ void AlsaWriter::onStopping()
     if (handle_) snd_pcm_drop(handle_);
 }
 
-void AlsaWriter::applyMonoToStereo(std::vector<uint8_t>& data)
+int AlsaWriter::applyMonoToStereo(const uint8_t* in, int in_len, std::vector<uint8_t>& out)
 {
-    int sampleCount = data.size() / sizeof(int16_t);
-    std::vector<uint8_t> stereoData(sampleCount * 2 * sizeof(int16_t));
-    const int16_t* monoSamples = reinterpret_cast<const int16_t*>(data.data());
-    int16_t* stereoSamples = reinterpret_cast<int16_t*>(stereoData.data());
+    int out_len = in_len * 2;
+    if ((int)out.size() < out_len)
+        out.resize(out_len);
+    int sampleCount = in_len / sizeof(int16_t);
+    const int16_t* monoSamples = reinterpret_cast<const int16_t*>(in);
+    int16_t* stereoSamples = reinterpret_cast<int16_t*>(out.data());
     for (int i = 0; i < sampleCount; i++) {
         stereoSamples[i * 2] = monoSamples[i];
         stereoSamples[i * 2 + 1] = 0;
     }
-    data = std::move(stereoData);
+    return out_len;
 }
 
 void AlsaWriter::process(AudioCommand& cmd)
@@ -39,11 +43,17 @@ void AlsaWriter::process(AudioCommand& cmd)
         return;
     }
 
+    const uint8_t* pcm_data = cmd.audio_data();
+    int pcm_size = cmd.audio_size();
+
+    std::shared_ptr<std::vector<uint8_t>> stereo_buf;
     if (mono_to_stereo_) {
-        applyMonoToStereo(cmd.data);
+        stereo_buf = stereo_pool_->acquire();
+        pcm_size = applyMonoToStereo(pcm_data, pcm_size, *stereo_buf);
+        pcm_data = stereo_buf->data();
     }
 
-    snd_pcm_sframes_t framecount = snd_pcm_bytes_to_frames(handle_, cmd.data.size());
+    snd_pcm_sframes_t framecount = snd_pcm_bytes_to_frames(handle_, pcm_size);
 
     // Check for accumulated latency and resync if needed
     snd_pcm_sframes_t delay = 0;
@@ -54,11 +64,11 @@ void AlsaWriter::process(AudioCommand& cmd)
         snd_pcm_prepare(handle_);
     }
 
-    snd_pcm_sframes_t frames = snd_pcm_writei(handle_, cmd.data.data(), framecount);
+    snd_pcm_sframes_t frames = snd_pcm_writei(handle_, pcm_data, framecount);
     if (frames < 0) {
         frames = snd_pcm_recover(handle_, frames, 1);
         if (frames >= 0) {
-            frames = snd_pcm_writei(handle_, cmd.data.data(), framecount);
+            frames = snd_pcm_writei(handle_, pcm_data, framecount);
         }
     }
     if (frames >= 0 && frames < framecount) {
@@ -79,6 +89,16 @@ void AlsaWriter::write(std::vector<uint8_t>&& data)
     AudioCommand cmd;
     cmd.type = AudioCommand::Data;
     cmd.data = std::move(data);
+    enqueueEntry(std::move(cmd));
+}
+
+void AlsaWriter::write(std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len)
+{
+    AudioCommand cmd;
+    cmd.type = AudioCommand::Data;
+    cmd.pool_buf = std::move(buf);
+    cmd.pool_offset = offset;
+    cmd.pool_len = len;
     enqueueEntry(std::move(cmd));
 }
 
@@ -147,6 +167,16 @@ void AudioOutput::MediaPacketAUD(uint64_t timestamp, const byte *buf, int len)
 void AudioOutput::MediaPacketAU1(uint64_t timestamp, const byte *buf, int len)
 {
     if (au1_writer) au1_writer->write(buf, len);
+}
+
+void AudioOutput::MediaPacketAUD(uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len)
+{
+    if (aud_writer) aud_writer->write(std::move(buf), offset, len);
+}
+
+void AudioOutput::MediaPacketAU1(uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len)
+{
+    if (au1_writer) au1_writer->write(std::move(buf), offset, len);
 }
 
 void AudioOutput::FlushAUD()
