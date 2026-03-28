@@ -1,7 +1,7 @@
 #include "buffer_pool.h"
 
-BufferPool::BufferPool(size_t bufferSize, size_t prealloc)
-    : bufferSize_(bufferSize)
+BufferPool::BufferPool(size_t bufferSize, size_t prealloc, bool allowGrowth)
+    : bufferSize_(bufferSize), allowGrowth_(allowGrowth)
 {
     pool_.reserve(prealloc);
     for (size_t i = 0; i < prealloc; ++i)
@@ -19,6 +19,7 @@ std::shared_ptr<BufferPool::Buffer> BufferPool::acquire()
             pool_.pop_back();
         }
     }
+    
     if (buf.empty())
         buf.resize(bufferSize_);
 
@@ -31,7 +32,8 @@ std::shared_ptr<BufferPool::Buffer> BufferPool::acquire()
 
 void BufferPool::release(Buffer&& buf)
 {
-    buf.resize(bufferSize_);
+    if (buf.size() < bufferSize_ || !allowGrowth_)
+        buf.resize(bufferSize_);
     std::lock_guard<std::mutex> lk(mutex_);
     pool_.push_back(std::move(buf));
 }

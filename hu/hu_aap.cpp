@@ -855,12 +855,19 @@
     return (0);
   }
 
-  int HUServer::hu_handle_MediaDataWithTimestamp (int chan, byte * buf, int len, bool is_last_frame) {
+  int HUServer::hu_handle_MediaDataWithTimestamp (int chan, byte * buf, int len, bool is_last_frame,
+                                                  std::shared_ptr<std::vector<uint8_t>> pool_buf) {
 
     uint64_t timestamp = be64toh(*((uint64_t*)buf));
     logd("Media timestamp %s %llu", chan_get(chan), timestamp);
 
-    int ret  = callbacks.MediaPacket(chan, timestamp, &buf [8], len - 8);
+    int ret;
+    if (pool_buf) {
+      int offset = (buf + 8) - reinterpret_cast<byte*>(pool_buf->data());
+      ret = callbacks.MediaPacket(chan, timestamp, std::move(pool_buf), offset, len - 8);
+    } else {
+      ret = callbacks.MediaPacket(chan, timestamp, &buf[8], len - 8);
+    }
     if (ret < 0)
     {
       return ret;
@@ -871,9 +878,16 @@
     return 0;
   }
 
-  int HUServer::hu_handle_MediaData(int chan, byte * buf, int len, bool is_last_frame) {
+  int HUServer::hu_handle_MediaData(int chan, byte * buf, int len, bool is_last_frame,
+                                     std::shared_ptr<std::vector<uint8_t>> pool_buf) {
 
-    int ret  = callbacks.MediaPacket(chan, 0, buf, len);
+    int ret;
+    if (pool_buf) {
+      int offset = buf - reinterpret_cast<byte*>(pool_buf->data());
+      ret = callbacks.MediaPacket(chan, 0, std::move(pool_buf), offset, len);
+    } else {
+      ret = callbacks.MediaPacket(chan, 0, buf, len);
+    }
     if (ret < 0)
     {
       return ret;
@@ -1028,7 +1042,8 @@
       return 0;
     }
 
-  int HUServer::iaap_msg_process (int chan, uint16_t msg_type, byte * buf, int len, bool is_last_frame) {
+  int HUServer::iaap_msg_process (int chan, uint16_t msg_type, byte * buf, int len, bool is_last_frame,
+                                   std::shared_ptr<std::vector<uint8_t>> pool_buf) {
 
     if (ena_log_verbo)
       logd ("iaap_msg_process msg_type: %d  len: %d  buf: %p", msg_type, len, buf);
@@ -1065,9 +1080,9 @@
         switch((HU_PROTOCOL_MESSAGE)msg_type)
         {
           case HU_PROTOCOL_MESSAGE::MediaDataWithTimestamp:
-            return hu_handle_MediaDataWithTimestamp(chan, buf, len, is_last_frame);
+            return hu_handle_MediaDataWithTimestamp(chan, buf, len, is_last_frame, std::move(pool_buf));
           case HU_PROTOCOL_MESSAGE::MediaData:
-            return hu_handle_MediaData(chan, buf, len, is_last_frame);
+            return hu_handle_MediaData(chan, buf, len, is_last_frame, std::move(pool_buf));
           case HU_PROTOCOL_MESSAGE::ServiceDiscoveryRequest:
             return hu_handle_ServiceDiscoveryRequest(chan, buf, len);
           case HU_PROTOCOL_MESSAGE::ChannelOpenRequest:
@@ -1487,19 +1502,37 @@
     // Decrypt frame payload
     byte* payload = &enc_buf[header_size];
     int payload_len = frame_len;
+    bool is_audio = (chan == AA_CH_AUD || chan == AA_CH_AU1 || chan == AA_CH_AU2);
+    std::shared_ptr<BufferPool::Buffer> pool_buf;
 
     if (flags & HU_FRAME_ENCRYPTED)
     {
-      decryption_buffer->resize(frame_len);
-      int bytes_read = hu_ssl_decrypt(payload, frame_len, decryption_buffer->data(), frame_len);
+      byte* decrypt_buf;
+      int decrypt_buf_size;
+      if (is_audio)
+      {
+        pool_buf = audio_decryption_pool.acquire();
+        decrypt_buf = pool_buf->data();
+        decrypt_buf_size = pool_buf->size();
+      }
+      else
+      {
+        if ((int)decryption_buffer->size() < frame_len)
+          decryption_buffer->resize(frame_len);
+        decrypt_buf = decryption_buffer->data();
+        decrypt_buf_size = decryption_buffer->size();
+      }
+
+      int bytes_read = hu_ssl_decrypt(payload, frame_len, decrypt_buf, decrypt_buf_size);
       if (bytes_read <= 0) {
         loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
         return (-1);
       }
-      if (ena_log_verbo)
-        logd ("hu_ssl_decrypt() bytes_read: %d", bytes_read);
-      payload = decryption_buffer->data();
+      
+      payload = decrypt_buf;
       payload_len = bytes_read;
+      if (ena_log_verbo)
+        logd ("hu_ssl_decrypt() payload_len: %d", payload_len);
     }
 
     // Stream channels: log partial frames for diagnostics
@@ -1513,14 +1546,14 @@
       if (payload_len >= 2)
       {
         uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(payload));
-        return iaap_msg_process (chan, msg_type, payload + 2, payload_len - 2, has_last);
+        return iaap_msg_process (chan, msg_type, payload + 2, payload_len - 2, has_last, std::move(pool_buf));
       }
       return 0;
     }
     else
     {
       // Continuation frame: raw media data, no msg_type/timestamp header
-      return iaap_msg_process (chan, static_cast<uint16_t>(HU_PROTOCOL_MESSAGE::MediaData), payload, payload_len, has_last);
+      return iaap_msg_process (chan, static_cast<uint16_t>(HU_PROTOCOL_MESSAGE::MediaData), payload, payload_len, has_last, std::move(pool_buf));
     }
   }
 /*
