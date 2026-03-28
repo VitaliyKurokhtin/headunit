@@ -28,6 +28,18 @@ int DesktopEventCallbacks::MediaPacket(int chan, uint64_t timestamp, const byte 
     return 0;
 }
 
+int DesktopEventCallbacks::MediaPacket(int chan, uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len) {
+
+    if (chan == AA_CH_VID && videoOutput) {
+        videoOutput->MediaPacket(timestamp, std::move(buf), offset, len);
+    } else if (chan == AA_CH_AUD && audioOutput) {
+        audioOutput->MediaPacketAUD(timestamp, buf->data() + offset, len);
+    } else if (chan == AA_CH_AU1 && audioOutput) {
+        audioOutput->MediaPacketAU1(timestamp, buf->data() + offset, len);
+    }
+    return 0;
+}
+
 int DesktopEventCallbacks::MediaStart(int chan) {
     if (chan == AA_CH_MIC) {
         printf("SHAI1 : Mic Started\n");

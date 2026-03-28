@@ -43,13 +43,14 @@ int MazdaEventCallbacks::MediaPacket(int chan, uint64_t timestamp, const byte *b
 
 int MazdaEventCallbacks::MediaPacket(int chan, uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len) {
 
-    if (chan == AA_CH_AUD && audioOutput) {
+    if (chan == AA_CH_VID && videoOutput) {
+        videoOutput->MediaPacket(timestamp, std::move(buf), offset, len);
+    } else if (chan == AA_CH_AUD && audioOutput) {
         audioOutput->MediaPacketAUD(timestamp, std::move(buf), offset, len);
     } else if (chan == AA_CH_AU1 && audioOutput) {
         audioOutput->MediaPacketAU1(timestamp, std::move(buf), offset, len);
-    } else {
-        return MediaPacket(chan, timestamp, buf->data() + offset, len);
     }
+    
     return 0;
 }
 

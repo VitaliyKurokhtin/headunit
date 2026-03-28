@@ -233,7 +233,7 @@ protected:
   int iaap_tra_send_tmo = 500;//2;//25;//250;//500;//100;//500;//250;
   // Recv path buffers (used only on hu_thread)
   std::vector<uint8_t>* decryption_buffer = new std::vector<uint8_t>();
-  BufferPool audio_decryption_pool{MAX_FRAME_PAYLOAD_SIZE, 2};
+  BufferPool stream_decryption_pool{MAX_FRAME_PAYLOAD_SIZE, 2};
   byte enc_buf[MAX_FRAME_SIZE] = {0};
   int32_t channel_session_id[AA_CH_MAX] = {0};
 

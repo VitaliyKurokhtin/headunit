@@ -1502,16 +1502,15 @@
     // Decrypt frame payload
     byte* payload = &enc_buf[header_size];
     int payload_len = frame_len;
-    bool is_audio = (chan == AA_CH_AUD || chan == AA_CH_AU1 || chan == AA_CH_AU2);
     std::shared_ptr<BufferPool::Buffer> pool_buf;
 
     if (flags & HU_FRAME_ENCRYPTED)
     {
       byte* decrypt_buf;
       int decrypt_buf_size;
-      if (is_audio)
+      if (is_stream)
       {
-        pool_buf = audio_decryption_pool.acquire();
+        pool_buf = stream_decryption_pool.acquire();
         decrypt_buf = pool_buf->data();
         decrypt_buf_size = pool_buf->size();
       }
