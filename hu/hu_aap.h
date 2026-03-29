@@ -97,10 +97,6 @@ protected:
   ~IHUAnyThreadInterface() {}
   IHUAnyThreadInterface() {}
 public:
-  typedef std::function<void(IHUConnectionThreadInterface&)> HUThreadCommand;
-  //Can be called from any thread
-  virtual int hu_queue_command(HUThreadCommand&& command) = 0;
-
   //Thread-safe media send
   virtual int hu_aap_enc_send_media_packet(int retry, int chan, uint16_t messageCode, uint64_t timeStamp, const byte* buffer, int bufferLen, int overrideTimeout = -1) = 0;
 
@@ -243,11 +239,7 @@ protected:
   std::unique_ptr<HUSenderThread> sender_thread;
 
   std::thread hu_thread;
-  int command_read_fd = -1;
-  int command_write_fd = -1;
   bool hu_thread_quit_flag = false;
-
-  HUThreadCommand* hu_pop_command();
 
   void hu_thread_main();
 
@@ -326,9 +318,6 @@ protected:
   int hu_handle_NaviTurn(int chan, byte * buf, int len);
   int hu_handle_NaviTurnDistance(int chan, byte * buf, int len);
 
-
-    //Can be called from any thread
-  virtual int hu_queue_command(IHUAnyThreadInterface::HUThreadCommand&& command) override;
 };
 
 enum class HU_INIT_MESSAGE : uint16_t

@@ -1200,17 +1200,6 @@
     return (0);
   }
 
-  int HUServer::hu_queue_command(IHUAnyThreadInterface::HUThreadCommand&& command)
-  {
-    IHUAnyThreadInterface::HUThreadCommand* ptr = new IHUAnyThreadInterface::HUThreadCommand(command);
-    int ret = write(command_write_fd, &ptr, sizeof(ptr));
-    if (ret < 0)
-    {
-      delete ptr;
-      loge("hu_queue_command error %d", ret);
-    }
-  }
-
   int HUServer::hu_aap_shutdown()
   {
     if (sender_thread)
@@ -1221,33 +1210,18 @@
 
     if (hu_thread.joinable())
     {
-      int ret = hu_queue_command([this](IHUConnectionThreadInterface& s)
+      if (iaap_state == hu_STATE_STARTED)
       {
-        if (iaap_state == hu_STATE_STARTED)
-        {
-          logw("Sending ShutdownRequest");
-          HU::ShutdownRequest byebye;
-          byebye.set_reason(HU::ShutdownRequest::REASON_QUIT);
-          s.hu_aap_enc_send_message(0, AA_CH_CTR, HU_PROTOCOL_MESSAGE::ShutdownRequest, byebye);
-          ms_sleep(500);
-        }
-        s.hu_aap_stop();
-      });
-
-      if (ret < 0)
-      {
-        loge("write end command error %d", ret);
+        logw("Sending ShutdownRequest");
+        HU::ShutdownRequest byebye;
+        byebye.set_reason(HU::ShutdownRequest::REASON_QUIT);
+        hu_aap_enc_send_message(0, AA_CH_CTR, HU_PROTOCOL_MESSAGE::ShutdownRequest, byebye);
+        ms_sleep(500);
       }
+
+      hu_thread_quit_flag = true;
       hu_thread.join();
     }
-
-    if (command_write_fd >= 0)
-      close(command_write_fd);
-    command_write_fd = -1;
-
-    if (command_read_fd >= 0)
-      close(command_read_fd);
-    command_read_fd = -1;
 
     // Send Byebye
     iaap_state = hu_STATE_STOPPIN;
@@ -1281,21 +1255,6 @@
     return (0);
   }
 
-  IHUAnyThreadInterface::HUThreadCommand* HUServer::hu_pop_command()
-  {
-    IHUAnyThreadInterface::HUThreadCommand* ptr = nullptr;
-    int ret = read(command_read_fd, &ptr, sizeof(ptr));
-    if (ret < 0)
-    {
-      loge("hu_pop_command error %d", ret);
-    }
-    else if (ret == sizeof(ptr))
-    {
-      return ptr;
-    }
-    return nullptr;
-  }
-
   void HUServer::hu_thread_main()
   {
     pthread_setname_np(pthread_self(), "hu_thread_main");
@@ -1306,20 +1265,24 @@
     {
       fd_set sock_set;
       FD_ZERO(&sock_set);
-      FD_SET(command_read_fd, &sock_set);
       FD_SET(transportFD, &sock_set);
-      int maxfd = std::max(command_read_fd, transportFD);
+      int maxfd = transportFD;
       if (errorfd >= 0)
       {
         maxfd = std::max(maxfd, errorfd);
         FD_SET(errorfd, &sock_set);
       }
 
-      int ret = select(maxfd+1, &sock_set, NULL, NULL, NULL);
-      if (ret <= 0)
+      timeval tv = {0, 200000}; // 200ms
+      int ret = select(maxfd+1, &sock_set, NULL, NULL, &tv);
+      if (ret < 0)
       {
         loge("Select failed %d", ret);
         return;
+      }
+      if (ret == 0)
+      {
+        continue; // timeout, re-check hu_thread_quit_flag
       }
       if (errorfd >= 0 && FD_ISSET(errorfd, &sock_set))
       {
@@ -1329,17 +1292,6 @@
       }
       else
       {
-        if (FD_ISSET(command_read_fd, &sock_set))
-        {
-          logd("Got command_read_fd");
-          IHUAnyThreadInterface::HUThreadCommand* ptr = nullptr;
-          if(ptr = hu_pop_command())
-          {
-            logd("Running %p", ptr);
-            (*ptr)(*this);
-            delete ptr;
-          }
-        }
         if (FD_ISSET(transportFD, &sock_set))
         {
           //data ready
@@ -1355,8 +1307,6 @@
     }
     logd("hu_thread_main exit");
   }
-
-  static_assert(PIPE_BUF >= sizeof(IHUAnyThreadInterface::HUThreadCommand*), "PIPE_BUF is tool small for a pointer?");
 
   int HUServer::hu_aap_start (HU_TRANSPORT_TYPE transportType, std::string& phoneIpAddress, bool waitForDevice) {                // Starts Transport/USBACC/OAP, then AA protocol w/ VersReq(1), SSL handshake, Auth Complete
 
@@ -1394,18 +1344,7 @@
     }
 
 
-    int pipefd[2];
-    ret = pipe2(pipefd, O_DIRECT);
-    if (ret < 0)
-    {
-      loge ("pipe2 failed ret: %d %i", ret, errno);
-      hu_aap_shutdown ();
-      return (-1);
-    }
-
     logw("Starting HU thread");
-    command_read_fd = pipefd[0];
-    command_write_fd = pipefd[1];
     hu_thread_quit_flag = false;
     hu_thread = std::thread([this] { this->hu_thread_main(); });
 
