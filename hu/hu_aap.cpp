@@ -191,8 +191,7 @@
     uint16_t* p = reinterpret_cast<uint16_t*>(buffer->data());
     *p++ = htobe16(messageCode);
 
-    uint64_t* ts = reinterpret_cast<uint64_t*>(p);
-    *ts = htobe64(timeStamp);
+    write_be64(p, timeStamp);
 
     sender_thread->enqueue(0, chan, std::move(buffer), -1, 10 + dataLen);
   }
@@ -210,10 +209,9 @@
     uint16_t* destMessageCode = reinterpret_cast<uint16_t*>(send_assembly_buffer.data());
     *destMessageCode++ = htobe16(messageCode);
 
-    uint64_t* destTimestamp = reinterpret_cast<uint64_t*>(destMessageCode);
-    *destTimestamp++ = htobe64(timeStamp);
+    write_be64(destMessageCode, timeStamp);
 
-    memcpy(destTimestamp, buffer, bufferLen);
+    memcpy(send_assembly_buffer.data() + 10, buffer, bufferLen);
 
     //logd ("Send %s on channel %i %s", message.GetTypeName().c_str(), chan, chan_get(chan));
     //hex_dump("PB:", 80, send_assembly_buffer.data(), requiredSize);
@@ -858,7 +856,7 @@
   int HUServer::hu_handle_MediaDataWithTimestamp (int chan, std::shared_ptr<std::vector<uint8_t>> pool_buf, int offset, int len, bool is_last_frame) {
 
     byte * buf = pool_buf->data() + offset;
-    uint64_t timestamp = be64toh(*((uint64_t*)buf));
+    uint64_t timestamp = read_be64(buf);
     logd("Media timestamp %s %llu", chan_get(chan), timestamp);
 
     int ret = callbacks.MediaPacket(chan, timestamp, std::move(pool_buf), offset + 8, len - 8);

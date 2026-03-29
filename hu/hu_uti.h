@@ -94,6 +94,21 @@ void hu_log_library_versions();
 
 void hu_install_crash_handler();
 
+// Alignment-safe big-endian read/write helpers.
+// Use memcpy so the compiler emits safe load/store instructions on ARM
+// even when the pointer is not naturally aligned.
+#include <string.h>
+#include <endian.h>
+inline uint64_t read_be64(const void* p) {
+    uint64_t v;
+    memcpy(&v, p, sizeof(v));
+    return be64toh(v);
+}
+inline void write_be64(void* p, uint64_t v) {
+    v = htobe64(v);
+    memcpy(p, &v, sizeof(v));
+}
+
 int wait_for_device_connection();
 #ifndef __ANDROID_API__
   #define strlcpy   strncpy
