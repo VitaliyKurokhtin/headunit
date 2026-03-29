@@ -30,6 +30,9 @@ extern int ena_log_aap_send;
 
 extern int ena_log_extra;
 extern int ena_log_verbo;
+extern int ena_log_debug;
+extern int ena_log_warni;
+extern int ena_log_error;
 
 typedef unsigned char byte;
 
@@ -67,11 +70,11 @@ typedef unsigned char byte;
 #define STR(s) STR2(s)
 #define STR2(s) #s
 
-#define  logx(...)  hu_log(hu_LOG_EXT,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__)
-#define  logv(...)  hu_log(hu_LOG_VER,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__)
-#define  logd(...)  hu_log(hu_LOG_DEB,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__)
-#define  logw(...)  hu_log(hu_LOG_WAR,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__)
-#define  loge(...)  hu_log(hu_LOG_ERR,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__)
+#define  logx(...)  do { if (ena_log_extra) hu_log(hu_LOG_EXT,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
+#define  logv(...)  do { if (ena_log_verbo) hu_log(hu_LOG_VER,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
+#define  logd(...)  do { if (ena_log_debug) hu_log(hu_LOG_DEB,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
+#define  logw(...)  do { if (ena_log_warni) hu_log(hu_LOG_WAR,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
+#define  loge(...)  do { if (ena_log_error) hu_log(hu_LOG_ERR,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
 
 //!!
 //  #define  logx(...)

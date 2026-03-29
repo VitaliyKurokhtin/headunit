@@ -7,7 +7,7 @@ AlsaWriter::AlsaWriter(snd_pcm_t* handle, const char* name, bool mono_to_stereo)
     : handle_(handle), name_(name), mono_to_stereo_(mono_to_stereo)
 {
     if (mono_to_stereo_)
-        stereo_pool_.reset(new BufferPool(8192, 1, true));
+        stereo_pool_.reset(new BufferPool(8192, 1, true, "mono-to-stereo"));
 }
 
 void AlsaWriter::onStarted()
@@ -76,22 +76,6 @@ void AlsaWriter::process(AudioCommand& cmd)
     }
 }
 
-void AlsaWriter::write(const byte* buf, int len)
-{
-    AudioCommand cmd;
-    cmd.type = AudioCommand::Data;
-    cmd.data.assign(buf, buf + len);
-    enqueueEntry(std::move(cmd));
-}
-
-void AlsaWriter::write(std::vector<uint8_t>&& data)
-{
-    AudioCommand cmd;
-    cmd.type = AudioCommand::Data;
-    cmd.data = std::move(data);
-    enqueueEntry(std::move(cmd));
-}
-
 void AlsaWriter::write(std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len)
 {
     AudioCommand cmd;
@@ -157,16 +141,6 @@ AudioOutput::~AudioOutput()
 
     if (aud_handle) snd_pcm_close(aud_handle);
     if (au1_handle) snd_pcm_close(au1_handle);
-}
-
-void AudioOutput::MediaPacketAUD(uint64_t timestamp, const byte *buf, int len)
-{
-    if (aud_writer) aud_writer->write(buf, len);
-}
-
-void AudioOutput::MediaPacketAU1(uint64_t timestamp, const byte *buf, int len)
-{
-    if (au1_writer) au1_writer->write(buf, len);
 }
 
 void AudioOutput::MediaPacketAUD(uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len)
@@ -267,7 +241,7 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
     snd_pcm_get_params(mic_handle, &buffer_size, &period_size);
     const size_t tempSize = snd_pcm_frames_to_bytes(mic_handle, period_size);
     const snd_pcm_sframes_t bufferFrameCount = period_size;
-    BufferPool pool(bufferStartPadding + tempSize, 2);
+    BufferPool pool(bufferStartPadding + tempSize, 1, false, "mic");
     bool canceled = false;
     while(!canceled)
     {

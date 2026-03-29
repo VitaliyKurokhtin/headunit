@@ -137,7 +137,6 @@ public:
     MazdaEventCallbacks(DBus::Connection& serviceBus, DBus::Connection& hmiBus);
     ~MazdaEventCallbacks();
 
-    virtual int MediaPacket(int chan, uint64_t timestamp, const byte * buf, int len) override;
     virtual int MediaPacket(int chan, uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len) override;
     virtual int MediaStart(int chan) override;
     virtual int MediaStop(int chan) override;

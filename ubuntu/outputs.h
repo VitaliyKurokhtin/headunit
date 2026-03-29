@@ -42,7 +42,6 @@ public:
     VideoOutput(DesktopEventCallbacks* callbacks);
     ~VideoOutput();
 
-    void MediaPacket(uint64_t timestamp, const byte * buf, int len);
     void MediaPacket(uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len);
     void SendNightMode();
 };

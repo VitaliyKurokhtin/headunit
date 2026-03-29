@@ -19,14 +19,12 @@ struct AudioCommand
 {
     enum Type { Data, Flush };
     Type type = Data;
-    std::vector<uint8_t> data;
-    // Zero-copy: keeps pool buffer alive until processing is done
     std::shared_ptr<std::vector<uint8_t>> pool_buf;
     int pool_offset = 0;
     int pool_len = 0;
 
-    const uint8_t* audio_data() const { return pool_buf ? pool_buf->data() + pool_offset : data.data(); }
-    int audio_size() const { return pool_buf ? pool_len : (int)data.size(); }
+    const uint8_t* audio_data() const { return pool_buf->data() + pool_offset; }
+    int audio_size() const { return pool_len; }
 };
 
 class AlsaWriter : public BufferProcessor<AudioCommand>
@@ -45,8 +43,6 @@ protected:
 
 public:
     AlsaWriter(snd_pcm_t* handle, const char* name, bool mono_to_stereo = false);
-    void write(const byte* buf, int len);
-    void write(std::vector<uint8_t>&& data);
     void write(std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len);
     void flush();
 };
@@ -63,8 +59,6 @@ public:
     AudioOutput(const char* outDev = "default");
     ~AudioOutput();
 
-    void MediaPacketAUD(uint64_t timestamp, const byte * buf, int len);
-    void MediaPacketAU1(uint64_t timestamp, const byte * buf, int len);
     void MediaPacketAUD(uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len);
     void MediaPacketAU1(uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len);
     void FlushAUD();

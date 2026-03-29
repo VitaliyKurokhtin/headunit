@@ -175,9 +175,7 @@ public:
   virtual int MessageFilter(IHUConnectionThreadInterface& stream, HU_STATE state,  int chan, uint16_t msg_type, const byte * buf, int len) { return 0; }
 
   //return -1 for error
-  virtual int MediaPacket(int chan, uint64_t timestamp, const byte * buf, int len) = 0;
-  virtual int MediaPacket(int chan, uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len)
-  { return MediaPacket(chan, timestamp, buf->data() + offset, len); }
+  virtual int MediaPacket(int chan, uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len) = 0;
   virtual int MediaStart(int chan) = 0;
   virtual int MediaStop(int chan) = 0;
   virtual void MediaSetupComplete(int chan) = 0;
@@ -232,9 +230,7 @@ protected:
   int iaap_tra_recv_tmo = 150;//100;//1;//10;//100;//250;//100;//250;//100;//25; // 10 doesn't work ? 100 does
   int iaap_tra_send_tmo = 500;//2;//25;//250;//500;//100;//500;//250;
   // Recv path buffers (used only on hu_thread)
-  std::vector<uint8_t>* decryption_buffer = new std::vector<uint8_t>();
-  BufferPool stream_decryption_pool{MAX_FRAME_PAYLOAD_SIZE, 2};
-  byte enc_buf[MAX_FRAME_SIZE] = {0};
+  BufferPool recv_pool{MAX_FRAME_SIZE, 13, false, "recv"};
   int32_t channel_session_id[AA_CH_MAX] = {0};
 
   // Send path buffers (protected by send_mutex, callable from any thread)
@@ -276,17 +272,16 @@ protected:
 
   int ihu_tra_start (HU_TRANSPORT_TYPE transportType, std::string& phoneIpAddress, bool waitForDevice);
   int ihu_tra_stop();
-  int iaap_msg_process (int chan, uint16_t msg_type, byte * buf, int len, bool is_last_frame = true,
-                        std::shared_ptr<std::vector<uint8_t>> pool_buf = nullptr);
+  int iaap_msg_process (int chan, uint16_t msg_type, std::shared_ptr<std::vector<uint8_t>> pool_buf, int offset, int len, bool is_last_frame = true);
 
-  int hu_aap_tra_recv (byte * buf, int len, int tmo);                      // Used by intern,                      hu_ssl
+  int hu_aap_tra_recv (byte * buf, int len, int tmo, bool data_available = false);  // Used by intern, hu_ssl
   int hu_aap_tra_send (int retry, byte * buf, int len, int tmo);                      // Used by intern,                      hu_ssl
   int hu_aap_enc_send (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);                     // Acquires send_mutex
   int hu_aap_enc_send_locked (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);             // Caller must hold send_mutex
   int hu_aap_unenc_send (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);                   // Acquires send_mutex
   int hu_aap_unenc_send_locked (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);           // Caller must hold send_mutex
 
-  int hu_aap_recv_process (int tmo);                                              // Used by          hu_mai,  hu_jni     // Process 1 encrypted receive message set:
+  int hu_aap_recv_process (int tmo, bool data_available = false);                  // Used by          hu_mai,  hu_jni     // Process 1 encrypted receive message set:
                                                                                                                           // Respond to decrypted message
   virtual int hu_aap_enc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) override;
   virtual void hu_queue_enc_send_message(int chan, uint16_t messageCode, const google::protobuf::MessageLite& message) override;
@@ -319,10 +314,8 @@ protected:
   int hu_handle_BindingRequest (int chan, byte * buf, int len);
   int hu_handle_MediaAck (int chan, byte * buf, int len);
   int hu_handle_MicRequest (int chan, byte * buf, int len);
-  int hu_handle_MediaDataWithTimestamp (int chan, byte * buf, int len, bool is_last_frame,
-                                       std::shared_ptr<std::vector<uint8_t>> pool_buf = nullptr);
-  int hu_handle_MediaData(int chan, byte * buf, int len, bool is_last_frame,
-                          std::shared_ptr<std::vector<uint8_t>> pool_buf = nullptr);
+  int hu_handle_MediaDataWithTimestamp (int chan, std::shared_ptr<std::vector<uint8_t>> pool_buf, int offset, int len, bool is_last_frame);
+  int hu_handle_MediaData(int chan, std::shared_ptr<std::vector<uint8_t>> pool_buf, int offset, int len, bool is_last_frame);
   int hu_handle_PhoneStatus(int chan, byte * buf, int len);
   int hu_handle_GenericNotificationResponse(int chan, byte * buf, int len);
   int hu_handle_StartGenericNotifications(int chan, byte * buf, int len);

@@ -520,16 +520,6 @@ VideoOutput::~VideoOutput()
     gst_object_unref(vid_sink);
 }
 
-void VideoOutput::MediaPacket(uint64_t timestamp, const byte *buf, int len)
-{
-    GstBuffer * buffer = gst_buffer_new_and_alloc(len);
-    memcpy(GST_BUFFER_DATA(buffer), buf, len);
-    int ret = gst_app_src_push_buffer(vid_src, buffer);
-    if(ret !=  GST_FLOW_OK){
-        printf("push buffer returned %d for %d bytes \n", ret, len);
-    }
-}
-
 void VideoOutput::MediaPacket(uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len)
 {
     // Zero-copy: prevent the shared_ptr from destructing until GStreamer is done with the buffer

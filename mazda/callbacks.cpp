@@ -29,18 +29,6 @@ MazdaEventCallbacks::~MazdaEventCallbacks() {
 
 }
 
-int MazdaEventCallbacks::MediaPacket(int chan, uint64_t timestamp, const byte *buf, int len) {
-
-    if (chan == AA_CH_VID && videoOutput) {
-        videoOutput->MediaPacket(timestamp, buf, len);
-    } else if (chan == AA_CH_AUD && audioOutput) {
-        audioOutput->MediaPacketAUD(timestamp, buf, len);
-    } else if (chan == AA_CH_AU1 && audioOutput) {
-        audioOutput->MediaPacketAU1(timestamp, buf, len);
-    }
-    return 0;
-}
-
 int MazdaEventCallbacks::MediaPacket(int chan, uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len) {
 
     if (chan == AA_CH_VID && videoOutput) {
