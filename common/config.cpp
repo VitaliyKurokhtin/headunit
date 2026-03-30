@@ -10,6 +10,7 @@ HU_TRANSPORT_TYPE config::transport_type = HU_TRANSPORT_TYPE::USB;
 std::string config::phoneIpAddress = "192.168.43.1";
 bool config::reverseGPS = false;
 std::string config::navAudio = "auto";
+std::string config::logLevel = "warning";
 
 void config::parseJson(json config_json)
 {
@@ -39,6 +40,13 @@ void config::parseJson(json config_json)
         if (val == "auto" || val == "left" || val == "right" || val == "stereo")
             config::navAudio = val;
     }
+    if (config_json["logLevel"].is_string())
+    {
+        std::string val = config_json["logLevel"];
+        if (val == "extra" || val == "verbose" || val == "debug" || val == "warning" || val == "error" || val == "none")
+            config::logLevel = val;
+    }
+    hu_log_set_level(config::logLevel);
     printf("json config parsed\n");
 }
 

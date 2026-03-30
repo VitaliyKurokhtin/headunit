@@ -52,6 +52,30 @@ int ena_log_error   = 1;
 
 int ena_log_aap_send = 0;
 
+void hu_log_set_level(const std::string& level) {
+  ena_log_extra = 0;
+  ena_log_verbo = 0;
+  ena_log_debug = 0;
+  ena_log_warni = 0;
+  ena_log_error = 0;
+
+  if (level == "none")
+    return;
+  ena_log_error = 1;
+  if (level == "error")
+    return;
+  ena_log_warni = 1;
+  if (level == "warning")
+    return;
+  ena_log_debug = 1;
+  if (level == "debug")
+    return;
+  ena_log_verbo = 1;
+  if (level == "verbose")
+    return;
+  ena_log_extra = 1;
+}
+
 // Enables for hex_dump:
 int ena_hd_hu_aad_dmp = 0;        // Higher level
 int ena_hd_tra_send   = 0;        // Lower  level

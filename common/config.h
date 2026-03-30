@@ -17,6 +17,7 @@ public:
     static std::string phoneIpAddress;
     static bool reverseGPS;
     static std::string navAudio;
+    static std::string logLevel;
 
 private:
     static json readConfigFile();

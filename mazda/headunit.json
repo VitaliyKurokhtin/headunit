@@ -4,5 +4,6 @@
     "wifiTransport": false,
     "phoneIpAddress": "192.168.43.1",
     "reverseGPS": false,
-    "navAudio": "auto"
+    "navAudio": "auto",
+    "logLevel": "warning"
 }

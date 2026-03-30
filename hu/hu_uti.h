@@ -20,6 +20,7 @@
 
 #include <dirent.h>                                                   // For opendir (), readdir (), closedir (), DIR, struct dirent.
 
+#include <string>
 #include <libudev.h>
 // Enables for hex_dump:
 extern int ena_hd_hu_aad_dmp;
@@ -33,6 +34,8 @@ extern int ena_log_verbo;
 extern int ena_log_debug;
 extern int ena_log_warni;
 extern int ena_log_error;
+
+void hu_log_set_level(const std::string& level);
 
 typedef unsigned char byte;
 
