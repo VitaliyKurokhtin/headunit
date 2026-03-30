@@ -3,10 +3,10 @@
 
 // --- AlsaWriter ---
 
-AlsaWriter::AlsaWriter(snd_pcm_t* handle, const char* name, bool mono_to_stereo)
-    : handle_(handle), name_(name), mono_to_stereo_(mono_to_stereo)
+AlsaWriter::AlsaWriter(snd_pcm_t* handle, const char* name, NavAudioChannel nav_channel)
+    : handle_(handle), name_(name), nav_channel_(nav_channel)
 {
-    if (mono_to_stereo_)
+    if (nav_channel_ != NavAudioChannel::STEREO)
         stereo_pool_.reset(new BufferPool(8192, 1, true, "mono-to-stereo"));
 }
 
@@ -29,8 +29,13 @@ int AlsaWriter::applyMonoToStereo(const uint8_t* in, int in_len, std::vector<uin
     const int16_t* monoSamples = reinterpret_cast<const int16_t*>(in);
     int16_t* stereoSamples = reinterpret_cast<int16_t*>(out.data());
     for (int i = 0; i < sampleCount; i++) {
-        stereoSamples[i * 2] = monoSamples[i];
-        stereoSamples[i * 2 + 1] = 0;
+        if (nav_channel_ == NavAudioChannel::RIGHT) {
+            stereoSamples[i * 2] = 0;
+            stereoSamples[i * 2 + 1] = monoSamples[i];
+        } else {
+            stereoSamples[i * 2] = monoSamples[i];
+            stereoSamples[i * 2 + 1] = 0;
+        }
     }
     return out_len;
 }
@@ -47,7 +52,7 @@ void AlsaWriter::process(AudioCommand& cmd)
     int pcm_size = cmd.audio_size();
 
     std::shared_ptr<std::vector<uint8_t>> stereo_buf;
-    if (mono_to_stereo_) {
+    if (nav_channel_ != NavAudioChannel::STEREO) {
         stereo_buf = stereo_pool_->acquire();
         pcm_size = applyMonoToStereo(pcm_data, pcm_size, *stereo_buf);
         pcm_data = stereo_buf->data();
@@ -97,7 +102,7 @@ void AlsaWriter::flush()
 
 // --- AudioOutput ---
 
-AudioOutput::AudioOutput(const char *outDev)
+AudioOutput::AudioOutput(const char *outDev, NavAudioChannel nav_channel)
 {
     printf("snd_asoundlib_version: %s\n", snd_asoundlib_version());
     logd("Device name %s\n", outDev);
@@ -129,7 +134,7 @@ AudioOutput::AudioOutput(const char *outDev)
         aud_writer->start();
     }
     if (au1_handle) {
-        au1_writer = new AlsaWriter(au1_handle, "au1_writer", true);
+        au1_writer = new AlsaWriter(au1_handle, "au1_writer", nav_channel);
         au1_writer->start();
     }
 }

@@ -20,9 +20,19 @@ MazdaEventCallbacks::MazdaEventCallbacks(DBus::Connection& serviceBus, DBus::Con
     , audioFocus(AudioManagerClient::FocusType::NONE)
 {
     //no need to create/destroy this
-    audioOutput.reset(new AudioOutput("entertainmentMl"));
-    audioMgrClient.reset(new AudioManagerClient(*this, serviceBus));
     videoMgrClient.reset(new VideoManagerClient(*this, hmiBus));
+
+    NavAudioChannel navChannel = NavAudioChannel::LEFT;
+    if (config::navAudio == "right") {
+        navChannel = NavAudioChannel::RIGHT;
+    } else if (config::navAudio == "stereo") {
+        navChannel = NavAudioChannel::STEREO;
+    } else if (config::navAudio == "auto") {
+        navChannel = GetIsRightHandWheel() ? NavAudioChannel::RIGHT : NavAudioChannel::LEFT;
+    }
+
+    audioOutput.reset(new AudioOutput("entertainmentMl", navChannel));
+    audioMgrClient.reset(new AudioManagerClient(*this, serviceBus));
 }
 
 MazdaEventCallbacks::~MazdaEventCallbacks() {
@@ -780,7 +790,7 @@ void MazdaEventCallbacks::HandleNaviTurnDistance(IHUConnectionThreadInterface& s
   }
 
   if (siFallback) {
-    logv("NAVDistanceMessage: distance: %d, time: %d, display_distance: %u, display_distance_unit: %d", 
+    logw("NAVDistanceMessage: distance: %d, time: %d, display_distance: %u, display_distance_unit: %d", 
         request.distance(),
         request.time_until(),
         request.display_distance(),
@@ -788,7 +798,7 @@ void MazdaEventCallbacks::HandleNaviTurnDistance(IHUConnectionThreadInterface& s
     );
     logUnknownFields(request.unknown_fields());
   } else {
-    logw("NAVDistanceMessage: distance: %d, time: %d, display_distance: %u, display_distance_unit: %d", 
+    logd("NAVDistanceMessage: distance: %d, time: %d, display_distance: %u, display_distance_unit: %d", 
         request.distance(),
         request.time_until(),
         request.display_distance(),

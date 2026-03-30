@@ -15,6 +15,8 @@
 #include "buffer_processor.h"
 #include "buffer_pool.h"
 
+enum class NavAudioChannel { LEFT, RIGHT, STEREO };
+
 struct AudioCommand
 {
     enum Type { Data, Flush };
@@ -31,8 +33,8 @@ class AlsaWriter : public BufferProcessor<AudioCommand>
 {
     snd_pcm_t* handle_;
     std::string name_;
-    bool mono_to_stereo_;
-    std::unique_ptr<BufferPool> stereo_pool_;  // Allocated only when mono_to_stereo_ is true
+    NavAudioChannel nav_channel_;
+    std::unique_ptr<BufferPool> stereo_pool_;  // Allocated only when nav_channel_ != STEREO
 
     int applyMonoToStereo(const uint8_t* in, int in_len, std::vector<uint8_t>& out);
 
@@ -42,7 +44,7 @@ protected:
     void process(AudioCommand& cmd) override;
 
 public:
-    AlsaWriter(snd_pcm_t* handle, const char* name, bool mono_to_stereo = false);
+    AlsaWriter(snd_pcm_t* handle, const char* name, NavAudioChannel nav_channel = NavAudioChannel::STEREO);
     void write(std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len);
     void flush();
 };
@@ -56,7 +58,7 @@ class AudioOutput
     AlsaWriter* au1_writer = nullptr;
 
 public:
-    AudioOutput(const char* outDev = "default");
+    AudioOutput(const char* outDev = "default", NavAudioChannel nav_channel = NavAudioChannel::LEFT);
     ~AudioOutput();
 
     void MediaPacketAUD(uint64_t timestamp, std::shared_ptr<std::vector<uint8_t>> buf, int offset, int len);

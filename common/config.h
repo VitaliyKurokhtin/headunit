@@ -16,6 +16,7 @@ public:
     static HU_TRANSPORT_TYPE transport_type;
     static std::string phoneIpAddress;
     static bool reverseGPS;
+    static std::string navAudio;
 
 private:
     static json readConfigFile();
