@@ -18,6 +18,7 @@ public:
     static bool reverseGPS;
     static std::string navAudio;
     static std::string logLevel;
+    static std::string fps;
 
 private:
     static json readConfigFile();

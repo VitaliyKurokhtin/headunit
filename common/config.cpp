@@ -11,6 +11,7 @@ std::string config::phoneIpAddress = "192.168.43.1";
 bool config::reverseGPS = false;
 std::string config::navAudio = "auto";
 std::string config::logLevel = "warning";
+std::string config::fps = "60";
 
 void config::parseJson(json config_json)
 {
@@ -45,6 +46,12 @@ void config::parseJson(json config_json)
         std::string val = config_json["logLevel"];
         if (val == "extra" || val == "verbose" || val == "debug" || val == "warning" || val == "error" || val == "none")
             config::logLevel = val;
+    }
+    if (config_json["fps"].is_string())
+    {
+        std::string val = config_json["fps"];
+        if (val == "30" || val == "60")
+            config::fps = val;
     }
     hu_log_set_level(config::logLevel);
     printf("json config parsed\n");

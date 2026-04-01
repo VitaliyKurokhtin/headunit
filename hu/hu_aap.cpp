@@ -5,6 +5,7 @@
 #include "hu_ssl.h"
 #include "hu_aap.h"
 #include "hu_aad.h"
+#include "../common/config.h"
 #include <fstream>
 #include <memory>
 #include <endian.h>
@@ -495,7 +496,9 @@
       inner->set_type(HU::STREAM_TYPE_VIDEO);
       auto videoConfig = inner->add_video_configs();
       videoConfig->set_resolution(HU::ChannelDescriptor::OutputStreamChannel::VideoConfig::VIDEO_RESOLUTION_800x480);
-      videoConfig->set_frame_rate(HU::ChannelDescriptor::OutputStreamChannel::VideoConfig::VIDEO_FPS_60);
+      videoConfig->set_frame_rate(config::fps == "30"
+          ? HU::ChannelDescriptor::OutputStreamChannel::VideoConfig::VIDEO_FPS_30
+          : HU::ChannelDescriptor::OutputStreamChannel::VideoConfig::VIDEO_FPS_60);
       videoConfig->set_margin_width(0);
       videoConfig->set_margin_height(0);
       videoConfig->set_dpi(141);
