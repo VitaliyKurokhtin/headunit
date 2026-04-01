@@ -246,7 +246,7 @@ void MicInput::MicThreadMain(IHUAnyThreadInterface* threadInterface)
     snd_pcm_get_params(mic_handle, &buffer_size, &period_size);
     const size_t tempSize = snd_pcm_frames_to_bytes(mic_handle, period_size);
     const snd_pcm_sframes_t bufferFrameCount = period_size;
-    BufferPool pool(bufferStartPadding + tempSize, 1, false, "mic");
+    BufferPool pool(bufferStartPadding + tempSize, 2, false, "mic");
     bool canceled = false;
     while(!canceled)
     {
