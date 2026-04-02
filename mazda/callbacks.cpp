@@ -567,7 +567,15 @@ void AudioManagerClient::audioMgrRequestAudioFocus(FocusType type)
         return;
     }
 
-    if (currentFocus == FocusType::NONE && type == FocusType::PERMANENT)
+    if (currentFocus == FocusType::TRANSIENT && type == FocusType::PERMANENT)
+    {
+        // Abandon transient session first — the audio manager won't grant
+        // permanent focus on the same stream while transient is still held.
+        json abandonArgs = { { "sessionId", aaTransientSessionID } };
+        std::string abandonResult = Request("abandonAudioFocus", abandonArgs.dump());
+        logd("abandonAudioFocus(%s)\n%s", abandonArgs.dump().c_str(), abandonResult.c_str());
+    }
+    if (currentFocus != FocusType::PERMANENT && type == FocusType::PERMANENT)
     {
         waitingForFocusLostEvent = true;
         previousSessionID = -1;
