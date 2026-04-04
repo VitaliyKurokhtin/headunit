@@ -47,6 +47,7 @@ int gen_server_poll_func (int poll_ms);
 int ena_log_extra   = 0;
 int ena_log_verbo   = 0;
 int ena_log_debug   = 0;
+int ena_log_info_   = 1;
 int ena_log_warni   = 1;
 int ena_log_error   = 1;
 
@@ -56,6 +57,7 @@ void hu_log_set_level(const std::string& level) {
   ena_log_extra = 0;
   ena_log_verbo = 0;
   ena_log_debug = 0;
+  ena_log_info_ = 0;
   ena_log_warni = 0;
   ena_log_error = 0;
 
@@ -66,6 +68,9 @@ void hu_log_set_level(const std::string& level) {
     return;
   ena_log_warni = 1;
   if (level == "warning")
+    return;
+  ena_log_info_ = 1;
+  if (level == "info")
     return;
   ena_log_debug = 1;
   if (level == "debug")
@@ -90,6 +95,7 @@ const  char * prio_get (int prio) {
     case hu_LOG_EXT: return ("X");
     case hu_LOG_VER: return ("V");
     case hu_LOG_DEB: return ("D");
+    case hu_LOG_INF: return ("I");
     case hu_LOG_WAR: return ("W");
     case hu_LOG_ERR: return ("E");
   }
@@ -103,6 +109,8 @@ int hu_log (int prio, const char * tag, const char * func, const char * fmt, ...
   if (! ena_log_verbo && prio == hu_LOG_VER)
     return -1;
   if (! ena_log_debug && prio == hu_LOG_DEB)
+    return -1;
+  if (! ena_log_info_ && prio == hu_LOG_INF)
     return -1;
   if (! ena_log_warni && prio == hu_LOG_WAR)
     return -1;
@@ -206,21 +214,20 @@ void hu_log_library_versions()
   utsname sysinfo;
   if (uname(&sysinfo) < 0)
   {
-    printf("uname failed\n");
+    loge("uname failed");
   }
   else
   {
-    printf("uname:\n sysname: %s\n release: %s\n version: %s\n machine: %s\n", sysinfo.sysname, sysinfo.release, sysinfo.version, sysinfo.machine);
+    logi("uname: sysname: %s release: %s version: %s machine: %s", sysinfo.sysname, sysinfo.release, sysinfo.version, sysinfo.machine);
   }
-  printf("libprotoversion: %s\n",google::protobuf::internal::VersionString(GOOGLE_PROTOBUF_VERSION).c_str());
+  logi("libprotoversion: %s",google::protobuf::internal::VersionString(GOOGLE_PROTOBUF_VERSION).c_str());
 
   const libusb_version* usbversion = libusb_get_version();
-  printf("libusb_get_version:\n");
-  printf(" version: %u.%u.%u.%u\n", (unsigned int)usbversion->major, (unsigned int)usbversion->minor, (unsigned int)usbversion->micro, (unsigned int)usbversion->nano);
-  printf(" rc: %s\n describe: %s\n", usbversion->rc, usbversion->describe);
+  logi("libusb version: %u.%u.%u.%u", (unsigned int)usbversion->major, (unsigned int)usbversion->minor, (unsigned int)usbversion->micro, (unsigned int)usbversion->nano);
+  logi("libusb rc: %s describe: %s", usbversion->rc, usbversion->describe);
 
   SSL_library_init();
-  printf("openssl version: %s (%#010lx)\n", SSLeay_version(SSLEAY_VERSION), SSLeay());
+  logi("openssl version: %s (%#010lx)", SSLeay_version(SSLEAY_VERSION), SSLeay());
 }
 
 static void print_backtrace(ucontext_t* ucontext)

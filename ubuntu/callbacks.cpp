@@ -1,3 +1,4 @@
+#define LOGTAG "ubuntu-cb"
 #include "callbacks.h"
 #include "outputs.h"
 #include "glib_utils.h"
@@ -30,7 +31,7 @@ int DesktopEventCallbacks::MediaPacket(int chan, uint64_t timestamp, std::shared
 
 int DesktopEventCallbacks::MediaStart(int chan) {
     if (chan == AA_CH_MIC) {
-        printf("SHAI1 : Mic Started\n");
+        logd("SHAI1 : Mic Started");
         micInput.Start(g_hu);
     }
     return 0;
@@ -39,7 +40,7 @@ int DesktopEventCallbacks::MediaStart(int chan) {
 int DesktopEventCallbacks::MediaStop(int chan) {
     if (chan == AA_CH_MIC) {
         micInput.Stop();
-        printf("SHAI1 : Mic Stopped\n");
+        logd("SHAI1 : Mic Stopped");
     }
     return 0;
 }
@@ -51,7 +52,7 @@ void DesktopEventCallbacks::MediaSetupComplete(int chan) {
 }
 
 void DesktopEventCallbacks::DisconnectionOrError() {
-    printf("DisconnectionOrError\n");
+    loge("DisconnectionOrError");
     g_main_loop_quit(gst_app.loop);
 }
 
@@ -94,7 +95,7 @@ std::string DesktopEventCallbacks::GetCarBluetoothAddress()
 }
 
 void DesktopEventCallbacks::HandlePhoneStatus(IHUConnectionThreadInterface& stream, const HU::PhoneStatus& phoneStatus) {
-    printf("HandlePhoneStatus: %s\n", phoneStatus.DebugString().c_str());
+    logd("HandlePhoneStatus: %s", phoneStatus.DebugString().c_str());
 }
 
 /*
@@ -201,7 +202,7 @@ void DesktopEventCallbacks::HandleNaviStatus(IHUConnectionThreadInterface& strea
 void DesktopEventCallbacks::HandleNaviTurn(IHUConnectionThreadInterface& stream, const HU::NAVTurnMessage &request){
     const char *event_name = &request.event_name()[0];
     std::string image = request.image();
-    printf(event_name);
+    logd("%s", event_name);
     logv ("AA_CH_NAVI: %s, TurnSide: %d, TurnEvent:%d, TurnNumber: %d, TurnAngle: %d", event_name, request.turn_side(), request.turn_event(), request.turn_number(), request.turn_angle());
     hex_dump("AA_CH_NAVI", 256, (unsigned char*)image.c_str(), image.length());
 }

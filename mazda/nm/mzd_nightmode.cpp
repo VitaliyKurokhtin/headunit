@@ -81,7 +81,7 @@ void mzd_nightmode_start()
         return;
     }
 
-    printf("Nightmode service connection established.\n");
+    logi("Nightmode service connection established.");
 }
 
 int mzd_is_night_mode_set()

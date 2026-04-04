@@ -1,3 +1,4 @@
+#define LOGTAG "ubuntu-main"
 #include <glib.h>
 #include <stdio.h>
 #define GDK_VERSION_MIN_REQUIRED (GDK_VERSION_3_10)
@@ -39,7 +40,7 @@ gst_loop(gst_app_t *app) {
         GstStateChangeReturn state_ret;
 
         app->loop = g_main_loop_new(NULL, FALSE);
-        printf("Starting Android Auto...\n");
+        logi("Starting Android Auto...");
         g_main_loop_run(app->loop);
 
         return ret;
@@ -54,17 +55,17 @@ main(int argc, char *argv[]) {
         hu_log_library_versions();
         hu_install_crash_handler();
 #if defined GDK_VERSION_3_10
-        printf("GTK VERSION 3.10.0 or higher\n");
+        logd("GTK VERSION 3.10.0 or higher");
         //Assuming we are on Gnome, what's the DPI scale factor?
         gdk_init(&argc, &argv);
 
         GdkScreen * primaryDisplay = gdk_screen_get_default();
         if (primaryDisplay) {
                 g_dpi_scalefactor = (float) gdk_screen_get_monitor_scale_factor(primaryDisplay, 0);
-                printf("Got gdk_screen_get_monitor_scale_factor() == %f\n", g_dpi_scalefactor);
+                logd("Got gdk_screen_get_monitor_scale_factor() == %f", g_dpi_scalefactor);
         }
 #else
-        printf("Using hard coded scalefactor\n");
+        logd("Using hard coded scalefactor");
         g_dpi_scalefactor = 1;
 #endif
         gst_app_t *app = &gst_app;
@@ -83,7 +84,7 @@ main(int argc, char *argv[]) {
 
         DesktopCommandServerCallbacks commandCallbacks;
         CommandServer commandServer(commandCallbacks);
-        printf("headunit version: %s \n", commandCallbacks.GetVersion().c_str());
+        logi("headunit version: %s", commandCallbacks.GetVersion().c_str());
         if (!commandServer.Start())
         {
             loge("Command server failed to start");
@@ -93,7 +94,7 @@ main(int argc, char *argv[]) {
         config::readConfig();
 
         //loop to emulate the car
-        printf("Looping\n");
+        logi("Looping");
         while(true)
         {
             DesktopEventCallbacks callbacks;
@@ -102,7 +103,7 @@ main(int argc, char *argv[]) {
             /* Start AA processing */
             ret = headunit.hu_aap_start(config::transport_type, config::phoneIpAddress, true);
             if (ret < 0) {
-                    printf("Phone is not connected. Connect a supported phone and restart.\n");
+                    logw("Phone is not connected. Connect a supported phone and restart.");
                     return 0;
             }
 
@@ -114,7 +115,7 @@ main(int argc, char *argv[]) {
             /* Start gstreamer pipeline and main loop */
             ret = gst_loop(app);
             if (ret < 0) {
-                    printf("STATUS:gst_loop() ret: %d\n", ret);
+                    loge("gst_loop() ret: %d", ret);
             }
 
             callbacks.connected = false;
@@ -123,7 +124,7 @@ main(int argc, char *argv[]) {
             /* Stop AA processing */
             ret = headunit.hu_aap_shutdown();
             if (ret < 0) {
-                    printf("STATUS:hu_aap_stop() ret: %d\n", ret);
+                    loge("hu_aap_stop() ret: %d", ret);
                     SDL_Quit();
                     return (ret);
             }

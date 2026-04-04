@@ -1,3 +1,4 @@
+#define LOGTAG "ubuntu-out"
 #include "outputs.h"
 #include "main.h"
 
@@ -6,30 +7,15 @@ void
 PrintKeyInfo(SDL_KeyboardEvent *key) {
         /* Is it a release or a press? */
         if (key->type == SDL_KEYUP)
-                printf("Release:- ");
-        else
-                printf("Press:- ");
-
-        /* Print the hardware scancode first */
-        printf("Scancode: 0x%02X", key->keysym.scancode);
-        /* Print the name of the key */
-        printf(", Name: %s", SDL_GetKeyName(key->keysym.sym));
-        /* We want to print the unicode info, but we need to make */
-        /* sure its a press event first (remember, release events */
-        /* don't have unicode info                                */
-        if (key->type == SDL_KEYDOWN) {
-                /* If the Unicode value is less than 0x80 then the    */
-                /* unicode value can be used to get a printable       */
-                /* representation of the key, using (char)unicode.    */
-                printf(", Unicode: ");
+                logd("Release:- Scancode: 0x%02X, Name: %s", key->keysym.scancode, SDL_GetKeyName(key->keysym.sym));
+        else if (key->type == SDL_KEYDOWN) {
                 if (key->keysym.scancode < 0x80 && key->keysym.scancode > 0) {
-                        printf("%c (0x%04X)", (char) key->keysym.scancode,
-                                key->keysym.scancode);
+                        logd("Press:- Scancode: 0x%02X, Name: %s, Unicode: %c (0x%04X)", key->keysym.scancode, SDL_GetKeyName(key->keysym.sym), (char) key->keysym.scancode, key->keysym.scancode);
                 } else {
-                        printf("? (0x%04X)", key->keysym.scancode);
+                        logd("Press:- Scancode: 0x%02X, Name: %s, Unicode: ? (0x%04X)", key->keysym.scancode, SDL_GetKeyName(key->keysym.sym), key->keysym.scancode);
                 }
-        }
-        printf("\n");
+        } else
+                logd("Press:- Scancode: 0x%02X, Name: %s", key->keysym.scancode, SDL_GetKeyName(key->keysym.sym));
 }
 
 gboolean VideoOutput::bus_callback(GstBus *bus, GstMessage *message, gpointer *ptr) {
@@ -222,7 +208,7 @@ gboolean VideoOutput::sdl_poll_event() {
 
                         g_hu->hu_queue_enc_send_message(AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
 
-                        printf("Sending fake location.");
+                        logd("Sending fake location.");
                     }
                 } else if (key->keysym.sym == SDLK_F3) {
                     if (event.type == SDL_KEYUP) {
@@ -232,7 +218,7 @@ gboolean VideoOutput::sdl_poll_event() {
 
                         g_hu->hu_queue_enc_send_message(AA_CH_NOT, HU_GENERIC_NOTIFICATIONS_CHANNEL_MESSAGE::GenericNotificationRequest, notificationReq);
 
-                        printf("Sending notification.");
+                        logd("Sending notification.");
                     }
                 }
 
@@ -348,7 +334,7 @@ void VideoOutput::MediaPacket(uint64_t timestamp, std::shared_ptr<std::vector<ui
         [](gpointer data) { delete static_cast<std::shared_ptr<std::vector<uint8_t>>*>(data); });
     int ret = gst_app_src_push_buffer((GstAppSrc *) vid_src, buffer);
     if (ret != GST_FLOW_OK) {
-        printf("push buffer returned %d for %d bytes \n", ret, len);
+        logw("push buffer returned %d for %d bytes", ret, len);
     }
 }
 
@@ -360,5 +346,5 @@ void VideoOutput::SendNightMode()
 
     g_hu->hu_queue_enc_send_message(AA_CH_SEN, HU_SENSOR_CHANNEL_MESSAGE::SensorEvent, sensorEvent);
 
-    printf("Nightmode: %s\n", nm ? "On" : "Off");
+    logd("Nightmode: %s", nm ? "On" : "Off");
 }

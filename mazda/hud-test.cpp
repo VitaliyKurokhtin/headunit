@@ -1,3 +1,4 @@
+#define LOGTAG "hud-test"
 #include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +25,7 @@
 #include <sys/time.h>
 
 #include "hud/hud.h"
+#include "hu_uti.h"
 
 #include <stdint.h>
 #include <string>
@@ -39,11 +41,11 @@ DBus::Glib::BusDispatcher dispatcher;
 int main (int argc, char *argv[])
 {
   DBus::default_dispatcher = &dispatcher;
-  printf("DBus::Glib::BusDispatcher attached\n");
+  logd("DBus::Glib::BusDispatcher attached");
 
-  printf("Connecting to DBUS\n");
+  logd("Connecting to DBUS");
   hud_start();
-  printf("hud installed %d\n", hud_installed());
+  logd("hud installed %d", hud_installed());
 
   uint32_t i = 1;
   uint8_t msg = 1;

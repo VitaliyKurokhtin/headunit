@@ -957,7 +957,7 @@
       {
         logd ("BluetoothPairingRequest Focus Request");
       }
-      printf("BluetoothPairingRequest: %s\n",request.DebugString().c_str());
+      logd("BluetoothPairingRequest: %s",request.DebugString().c_str());
 
       HU::BluetoothPairingResponse response;
       response.set_already_paired(true);
@@ -978,7 +978,7 @@
       {
         logd ("BluetoothAuthData Focus Request");
       }
-      printf("BluetoothAuthData: %s\n",request.DebugString().c_str());
+      logd("BluetoothAuthData: %s",request.DebugString().c_str());
       return 0;
   }
 

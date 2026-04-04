@@ -1,3 +1,4 @@
+#define LOGTAG "mazda-cb"
 #include "callbacks.h"
 #include "outputs.h"
 #include "glib_utils.h"
@@ -54,7 +55,7 @@ int MazdaEventCallbacks::MediaPacket(int chan, uint64_t timestamp, std::shared_p
 
 int MazdaEventCallbacks::MediaStart(int chan) {
     if (chan == AA_CH_MIC) {
-        printf("SHAI1 : Mic Started\n");
+        logd("SHAI1 : Mic Started");
         micInput.Start(g_hu);
     }
     return 0;
@@ -63,7 +64,7 @@ int MazdaEventCallbacks::MediaStart(int chan) {
 int MazdaEventCallbacks::MediaStop(int chan) {
     if (chan == AA_CH_MIC) {
         micInput.Stop();
-        printf("SHAI1 : Mic Stopped\n");
+        logd("SHAI1 : Mic Stopped");
     } else if (chan == AA_CH_AUD) {
         audioOutput->FlushAUD();
     } else if (chan == AA_CH_AU1) {
@@ -83,7 +84,7 @@ void MazdaEventCallbacks::MediaSetupComplete(int chan) {
 }
 
 void MazdaEventCallbacks::DisconnectionOrError() {
-    printf("DisconnectionOrError\n");
+    loge("DisconnectionOrError");
     g_main_loop_quit(gst_app.loop);
 }
 
@@ -183,7 +184,7 @@ void MazdaEventCallbacks::VideoFocusHappened(bool hasFocus, bool unrequested) {
 }
 
 void MazdaEventCallbacks::AudioFocusHappend(AudioManagerClient::FocusType type) {
-    printf("AudioFocusHappend(%i)\n", int(type));
+    logd("AudioFocusHappend(%i)", int(type));
     audioFocus = type;
     HU::AudioFocusResponse response;
     switch(type) {
@@ -383,7 +384,7 @@ void AudioManagerClient::aaRegisterStream()
         try
         {
             std::string sessString = Request("openSession", sessArgs.dump());
-            printf("openSession(%s)\n%s\n", sessArgs.dump().c_str(), sessString.c_str());
+            logd("openSession(%s)\n%s", sessArgs.dump().c_str(), sessString.c_str());
             aaSessionID = json::parse(sessString)["sessionId"];
 
             // Register the stream
@@ -395,7 +396,7 @@ void AudioManagerClient::aaRegisterStream()
                 { "streamType", "Media" }
             };
             std::string regString = Request("registerAudioStream", regArgs.dump());
-            printf("registerAudioStream(%s)\n%s\n", regArgs.dump().c_str(), regString.c_str());
+            logd("registerAudioStream(%s)\n%s", regArgs.dump().c_str(), regString.c_str());
         }
         catch (const std::domain_error& ex)
         {
@@ -415,7 +416,7 @@ void AudioManagerClient::aaRegisterStream()
         try
         {
             std::string sessString = Request("openSession", sessArgs.dump());
-            printf("openSession(%s)\n%s\n", sessArgs.dump().c_str(), sessString.c_str());
+            logd("openSession(%s)\n%s", sessArgs.dump().c_str(), sessString.c_str());
             aaTransientSessionID = json::parse(sessString)["sessionId"];
 
             // Register the stream
@@ -427,7 +428,7 @@ void AudioManagerClient::aaRegisterStream()
                 { "streamType", "InfoUser" }
             };
             std::string regString = Request("registerAudioStream", regArgs.dump());
-            printf("registerAudioStream(%s)\n%s\n", regArgs.dump().c_str(), regString.c_str());
+            logd("registerAudioStream(%s)\n%s", regArgs.dump().c_str(), regString.c_str());
         }
         catch (const std::domain_error& ex)
         {
@@ -452,7 +453,7 @@ void AudioManagerClient::populateStreamTable()
         { "pretty", false }
     };
     std::string resultString = Request("dumpState", requestArgs.dump());
-    printf("dumpState(%s)\n%s\n", requestArgs.dump().c_str(), resultString.c_str());
+    logd("dumpState(%s)\n%s", requestArgs.dump().c_str(), resultString.c_str());
     /*
          * An example resonse:
          *
@@ -488,7 +489,7 @@ void AudioManagerClient::populateStreamTable()
                 continue;
             }
 
-            printf("Found stream %s session id %i\n", streamName.c_str(), sessionId);
+            logd("Found stream %s session id %i", streamName.c_str(), sessionId);
             if(streamName == aaStreamName)
             {
                 if (aaSessionID < 0)
@@ -511,12 +512,12 @@ void AudioManagerClient::populateStreamTable()
     catch (const std::domain_error& ex)
     {
         loge("Failed to parse state json: %s", ex.what());
-        printf("%s\n", resultString.c_str());
+        logd("%s", resultString.c_str());
     }
     catch (const std::invalid_argument& ex)
     {
         loge("Failed to parse state json: %s", ex.what());
-        printf("%s\n", resultString.c_str());
+        logd("%s", resultString.c_str());
     }
 }
 
@@ -537,7 +538,7 @@ AudioManagerClient::~AudioManagerClient()
     {
         json args = { { "sessionId", previousSessionID } };
         std::string result = Request("requestAudioFocus", args.dump());
-        printf("requestAudioFocus(%s)\n%s\n", args.dump().c_str(), result.c_str());
+        logd("requestAudioFocus(%s)\n%s", args.dump().c_str(), result.c_str());
     }
 
     for (int session : {aaSessionID, aaTransientSessionID })
@@ -546,7 +547,7 @@ AudioManagerClient::~AudioManagerClient()
         {
             json args = { { "sessionId", session } };
             std::string result = Request("closeSession", args.dump());
-            printf("closeSession(%s)\n%s\n", args.dump().c_str(), result.c_str());
+            logd("closeSession(%s)\n%s", args.dump().c_str(), result.c_str());
         }
     }
 }
@@ -560,7 +561,7 @@ void AudioManagerClient::audioMgrRequestAudioFocus(FocusType type)
         audioMgrReleaseAudioFocus();
         return;
     }
-    printf("audioMgrRequestAudioFocus(%i)\n", int(type));
+    logd("audioMgrRequestAudioFocus(%i)", int(type));
     if (currentFocus == type)
     {
         callbacks.AudioFocusHappend(currentFocus);
@@ -582,12 +583,12 @@ void AudioManagerClient::audioMgrRequestAudioFocus(FocusType type)
     }
     json args = { { "sessionId", type == FocusType::TRANSIENT ? aaTransientSessionID : aaSessionID } };
     std::string result = Request("requestAudioFocus", args.dump());
-    printf("requestAudioFocus(%s)\n%s\n", args.dump().c_str(), result.c_str());
+    logd("requestAudioFocus(%s)\n%s", args.dump().c_str(), result.c_str());
 }
 
 void AudioManagerClient::audioMgrReleaseAudioFocus()
 {
-    printf("audioMgrReleaseAudioFocus()\n");
+    logd("audioMgrReleaseAudioFocus()");
     if (currentFocus == FocusType::NONE)
     {
         //nothing to do
@@ -598,14 +599,14 @@ void AudioManagerClient::audioMgrReleaseAudioFocus()
         //We released the last one, give up audio focus for real
         json args = { { "sessionId", previousSessionID } };
         std::string result = Request("requestAudioFocus", args.dump());
-        printf("requestAudioFocus(%s)\n%s\n", args.dump().c_str(), result.c_str());
+        logd("requestAudioFocus(%s)\n%s", args.dump().c_str(), result.c_str());
         previousSessionID = -1;
     }
     else if (currentFocus == FocusType::TRANSIENT)
     {
         json args = { { "sessionId", aaTransientSessionID } };
         std::string result = Request("abandonAudioFocus", args.dump());
-        printf("abandonAudioFocus(%s)\n%s\n", args.dump().c_str(), result.c_str());
+        logd("abandonAudioFocus(%s)\n%s", args.dump().c_str(), result.c_str());
         previousSessionID = -1;
     }
     else
@@ -617,7 +618,7 @@ void AudioManagerClient::audioMgrReleaseAudioFocus()
 
 void AudioManagerClient::Notify(const std::string &signalName, const std::string &payload)
 {
-    printf("AudioManagerClient::Notify signalName=%s payload=%s\n", signalName.c_str(), payload.c_str());
+    logd("AudioManagerClient::Notify signalName=%s payload=%s", signalName.c_str(), payload.c_str());
     if (signalName == "audioFocusChangeEvent")
     {
         try

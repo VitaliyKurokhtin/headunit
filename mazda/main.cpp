@@ -1,3 +1,4 @@
+#define LOGTAG "mazda-main"
 #include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -183,7 +184,7 @@ int main (int argc, char *argv[])
     {
         MazdaCommandServerCallbacks commandCallbacks;
         CommandServer commandServer(commandCallbacks);
-        printf("headunit version: %s \n", commandCallbacks.GetVersion().c_str());
+        logi("headunit version: %s", commandCallbacks.GetVersion().c_str());
         if (!commandServer.Start())
         {
             loge("Command server failed to start");
@@ -193,12 +194,12 @@ int main (int argc, char *argv[])
         if (argc >= 2 && strcmp(argv[1], "test") == 0)
         {
             //test mode from the installer, if we got here it's ok
-            printf("###TESTMODE_OK###\n");
+            logi("###TESTMODE_OK###");
             return 0;
         }
 
         config::readConfig();
-        printf("Looping\n");
+        logi("Looping");
         while (true)
         {
             //Make a new one instead of using the default so we can clean it up each run
@@ -206,11 +207,11 @@ int main (int argc, char *argv[])
             //Recreate this each time, it makes the error handling logic simpler
             DBus::Glib::BusDispatcher dispatcher;
             dispatcher.attach(run_on_thread_main_context);
-            printf("DBus::Glib::BusDispatcher attached\n");
+            logd("DBus::Glib::BusDispatcher attached");
 
             DBus::default_dispatcher = &dispatcher;
 
-            printf("Making debug connections\n");
+            logd("Making debug connections");
             DBus::Connection hmiBus(HMI_BUS_ADDRESS, false);
             hmiBus.register_bus();
 
@@ -243,7 +244,7 @@ int main (int argc, char *argv[])
 
             /* Start gstreamer pipeline and main loop */
 
-            printf("Starting Android Auto...\n");
+            logi("Starting Android Auto...");
 
             g_main_loop_run (gst_app.loop);
 
@@ -254,21 +255,21 @@ int main (int argc, char *argv[])
             callbacks.audioFocus = AudioManagerClient::FocusType::NONE;
             callbacks.inCall = false;
 
-            printf("quitting...\n");
+            logi("quitting...");
             //wake up night mode  and gps polling threads
             quitcv.notify_all();
             hud_request_stop();
 
-            printf("waiting for nm_thread\n");
+            logi("waiting for nm_thread");
             nm_thread.join();
 
-            printf("waiting for gps_thread\n");
+            logi("waiting for gps_thread");
             gp_thread.join();
 
-            printf("waiting for hud_thread\n");
+            logi("waiting for hud_thread");
             hud_thread.join();
 
-            printf("shutting down\n");
+            logi("shutting down");
 
             g_main_loop_unref(gst_app.loop);
             gst_app.loop = nullptr;
@@ -276,7 +277,7 @@ int main (int argc, char *argv[])
             /* Stop AA processing */
             ret = headunit.hu_aap_shutdown();
             if (ret < 0) {
-                printf("hu_aap_shutdown() ret: %d\n", ret);
+                loge("hu_aap_shutdown() ret: %d", ret);
                 return ret;
             }
 

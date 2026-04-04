@@ -104,7 +104,7 @@ void AlsaWriter::flush()
 
 AudioOutput::AudioOutput(const char *outDev, NavAudioChannel nav_channel)
 {
-    printf("snd_asoundlib_version: %s\n", snd_asoundlib_version());
+    logi("snd_asoundlib_version: %s", snd_asoundlib_version());
     logd("Device name %s\n", outDev);
     int err = 0;
     if ((err = snd_pcm_open(&aud_handle, outDev, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {

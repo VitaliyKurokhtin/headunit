@@ -1,3 +1,4 @@
+#define LOGTAG "mazda-out"
 #include "outputs.h"
 #include "main.h"
 #include "callbacks.h"
@@ -106,7 +107,7 @@ void VideoOutput::pass_key_to_mzd(int type, int code, int val)
 {
   if (val && ioctl(kbd_fd, EVIOCGRAB, 0) < 0)
   {
-    fprintf(stderr, "EVIOCGRAB failed to release %s\n", EVENT_DEVICE_KBD);
+    loge("EVIOCGRAB failed to release %s", EVENT_DEVICE_KBD);
   }
 
   emit(ui_fd, type, code, val);
@@ -114,7 +115,7 @@ void VideoOutput::pass_key_to_mzd(int type, int code, int val)
 
   if(!val && ioctl(kbd_fd, EVIOCGRAB, 1) < 0)
   {
-    fprintf(stderr, "EVIOCGRAB failed to grab %s\n", EVENT_DEVICE_KBD);
+    loge("EVIOCGRAB failed to grab %s", EVENT_DEVICE_KBD);
   }
 }
 void VideoOutput::input_thread_func()
@@ -135,7 +136,7 @@ void VideoOutput::input_thread_func()
 
         if (unblocked == -1)
         {
-            printf("Error in read...\n");
+            loge("Error in read...");
             g_main_loop_quit(gst_app.loop);
             break;
         }
@@ -155,7 +156,7 @@ void VideoOutput::input_thread_func()
                 break;
 
             if (size < sizeof(input_event)) {
-                printf("Error size when reading\n");
+                loge("Error size when reading");
                 g_main_loop_quit(gst_app.loop);
                 break;
             }
@@ -212,7 +213,7 @@ void VideoOutput::input_thread_func()
                 break;
 
             if (size < sizeof(input_event)) {
-                printf("Error size when reading\n");
+                loge("Error size when reading");
                 g_main_loop_quit(gst_app.loop);
                 break;
             }
@@ -236,16 +237,16 @@ void VideoOutput::input_thread_func()
                     switch (event.code)
                     {
                     case KEY_G:
-                        printf("KEY_G\n");
+                        logd("KEY_G");
                         scanCode = HUIB_MIC;
                         break;
                     //Make the music button play/pause
                     case KEY_E:
-                        printf("KEY_E\n");
+                        logd("KEY_E");
                         scanCode = HUIB_MUSIC;
                         break;
                     case KEY_LEFTBRACE:
-                        printf("KEY_LEFTBRACE (next track with media focus: %i)\n",  hasMediaAudioFocus ? 1 : 0);
+                        logd("KEY_LEFTBRACE (next track with media focus: %i)",  hasMediaAudioFocus ? 1 : 0);
                         if(hasMediaAudioFocus)
                         {
                             scanCode = HUIB_NEXT;
@@ -256,7 +257,7 @@ void VideoOutput::input_thread_func()
                         }
                         break;
                     case KEY_RIGHTBRACE:
-                        printf("KEY_RIGHTBRACE (prev track with media focus: %i)\n",  hasMediaAudioFocus ? 1 : 0);
+                        logd("KEY_RIGHTBRACE (prev track with media focus: %i)",  hasMediaAudioFocus ? 1 : 0);
                         if(hasMediaAudioFocus)
                         {
                             scanCode = HUIB_PREV;
@@ -267,59 +268,59 @@ void VideoOutput::input_thread_func()
                         }
                         break;
                     case KEY_BACKSPACE:
-                        printf("KEY_BACKSPACE\n");
+                        logd("KEY_BACKSPACE");
                         scanCode = HUIB_BACK;
                         break;
                     case KEY_ENTER:
-                        printf("KEY_ENTER\n");
+                        logd("KEY_ENTER");
                         scanCode = HUIB_ENTER;
                         break;
                     case KEY_LEFT:
-                        printf("KEY_LEFT\n");
+                        logd("KEY_LEFT");
                         scanCode = HUIB_LEFT;
                         break;
                     case KEY_RIGHT:
-                        printf("KEY_RIGHT\n");
+                        logd("KEY_RIGHT");
                         scanCode = HUIB_RIGHT;
                         break;
                     case KEY_UP:
-                        printf("KEY_UP\n");
+                        logd("KEY_UP");
                         scanCode = HUIB_UP;
                         break;
                     case KEY_DOWN:
-                        printf("KEY_DOWN\n");
+                        logd("KEY_DOWN");
                         scanCode = HUIB_DOWN;
                         break;
                     case KEY_N:
-                        printf("KEY_N\n");
+                        logd("KEY_N");
                         if (isPressed) {
                             scrollAmount = -1;
                         }
                         break;
                     case KEY_M:
-                        printf("KEY_M\n");
+                        logd("KEY_M");
                         if (isPressed) {
                             scrollAmount = 1;
                         }
                         break;
                     case KEY_HOME:
-                        printf("KEY_HOME\n");
+                        logd("KEY_HOME");
                         scanCode = HUIB_HOME;
                         break;
                     case KEY_R: // NAV
-                        printf("KEY_R\n");
+                        logd("KEY_R");
                         scanCode = HUIB_NAVIGATION;
                         break;
                     case KEY_Z: // CALL ANS
-                        printf("KEY_Z\n");
+                        logd("KEY_Z");
                         scanCode = HUIB_PHONE;
                         break;
                     case KEY_X: // CALL END
-                        printf("KEY_X\n");
+                        logd("KEY_X");
 #ifdef IOGRAB_DEBUG
                         if(hasMediaAudioFocus && isPressed && ioctl(kbd_fd, EVIOCGRAB, 0) < 0)
                         { // This is just for testing although it may be a useful feature if we polish it a little
-                            fprintf(stderr, "EVIOCGRAB failed to ungrab %s\n", EVENT_DEVICE_KBD);
+                            loge("EVIOCGRAB failed to ungrab %s", EVENT_DEVICE_KBD);
                         }
                         else
 #endif
@@ -328,7 +329,7 @@ void VideoOutput::input_thread_func()
                         }
                         break;
                     case KEY_T: // FAV
-                        printf("KEY_T\n");
+                        logd("KEY_T");
                         scanCode = HUIB_PLAYPAUSE;
                         break;
                     }
@@ -395,48 +396,48 @@ VideoOutput::VideoOutput(MazdaEventCallbacks* callbacks)
     touch_fd = open(EVENT_DEVICE_TS, O_RDONLY);
 
     if (touch_fd < 0) {
-        fprintf(stderr, "%s is not a vaild device\n", EVENT_DEVICE_TS);
+        loge("%s is not a valid device", EVENT_DEVICE_TS);
     }
 
     if (ioctl(touch_fd, EVIOCGRAB, 1) < 0)
     {
-        fprintf(stderr, "EVIOCGRAB failed on %s\n", EVENT_DEVICE_TS);
+        loge("EVIOCGRAB failed on %s", EVENT_DEVICE_TS);
     }
 
     kbd_fd = open(EVENT_DEVICE_KBD, O_RDONLY);
 
     if (kbd_fd < 0)
     {
-        fprintf(stderr, "%s is not a vaild device\n", EVENT_DEVICE_KBD);
+        loge("%s is not a valid device", EVENT_DEVICE_KBD);
     }
 
     if (ioctl(kbd_fd, EVIOCGRAB, 1) < 0)
     {
-        fprintf(stderr, "EVIOCGRAB failed on %s\n", EVENT_DEVICE_KBD);
+        loge("EVIOCGRAB failed on %s", EVENT_DEVICE_KBD);
     }
 
     ui_fd = open(EVENT_DEVICE_UI, O_WRONLY | O_NONBLOCK);
 
     if (ui_fd < 0)
     {
-        fprintf(stderr, "%s is not a vaild device\n", EVENT_DEVICE_UI);
+        loge("%s is not a valid device", EVENT_DEVICE_UI);
     }
 
     if (ioctl(ui_fd, UI_SET_EVBIT, EV_KEY) < 0)
     {
-        fprintf(stderr, "UI_SET_EVBIT failed on %s\n", EV_KEY);
+        loge("UI_SET_EVBIT failed on %d", EV_KEY);
     }
     if (ioctl(ui_fd, UI_SET_KEYBIT, KEY_LEFTBRACE) < 0)
     {
-        fprintf(stderr, "UI_SET_KEYBIT failed on %s\n", KEY_LEFTBRACE);
+        loge("UI_SET_KEYBIT failed on %d", KEY_LEFTBRACE);
     }
     if (ioctl(ui_fd, UI_SET_KEYBIT, KEY_RIGHTBRACE) < 0)
     {
-        fprintf(stderr, "UI_SET_KEYBIT failed on %s\n", KEY_RIGHTBRACE);
+        loge("UI_SET_KEYBIT failed on %d", KEY_RIGHTBRACE);
     }
     if (ioctl(ui_fd, UI_SET_KEYBIT, KEY_E) < 0)
     {
-        fprintf(stderr, "UI_SET_KEYBIT failed on %s\n", KEY_E);
+        loge("UI_SET_KEYBIT failed on %d", KEY_E);
     }
     struct uinput_user_dev uidev;
     memset(&uidev, 0, sizeof(uidev));
@@ -448,17 +449,17 @@ VideoOutput::VideoOutput(MazdaEventCallbacks* callbacks)
 
     if(write(ui_fd, &uidev, sizeof(uidev)) < 0)
     {
-        fprintf(stderr, "Write uidev failed");
+        loge("Write uidev failed");
     }
 
     if (ioctl(ui_fd, UI_DEV_CREATE) < 0)
     {
-        fprintf(stderr, "UI_DEV_CREATE failed on %s\n", EVENT_DEVICE_UI);
+        loge("UI_DEV_CREATE failed on %s", EVENT_DEVICE_UI);
     }
 
     int quitpiperw[2];
     if (pipe(quitpiperw) < 0) {
-        fprintf(stderr, "Pipe failed");
+        loge("Pipe failed");
     }
     input_thread_quit_pipe_read = quitpiperw[0];
     input_thread_quit_pipe_write = quitpiperw[1];
@@ -481,7 +482,7 @@ VideoOutput::VideoOutput(MazdaEventCallbacks* callbacks)
     vid_pipeline = gst_parse_launch(vid_pipeline_launch, &error);
 
     if (error != NULL) {
-        printf("could not construct pipeline: %s\n", error->message);
+        loge("could not construct pipeline: %s", error->message);
         g_clear_error (&error);
     }
 
@@ -504,7 +505,7 @@ VideoOutput::~VideoOutput()
     //data we write doesn't matter, wake up touch polling thread
     write(input_thread_quit_pipe_write, &input_thread_quit_pipe_write, sizeof(input_thread_quit_pipe_write));
 
-    printf("waiting for input_thread\n");
+    logd("waiting for input_thread");
     input_thread.join();
 
     ioctl(ui_fd, UI_DEV_DESTROY);
@@ -533,6 +534,6 @@ void VideoOutput::MediaPacket(uint64_t timestamp, std::shared_ptr<std::vector<ui
     };
     int ret = gst_app_src_push_buffer(vid_src, buffer);
     if (ret != GST_FLOW_OK) {
-        printf("push buffer returned %d for %d bytes \n", ret, len);
+        logw("push buffer returned %d for %d bytes", ret, len);
     }
 }

@@ -1,4 +1,6 @@
+#define LOGTAG "mazda-bt"
 #include "mzd_bluetooth.h"
+#include "hu_uti.h"
 
 #include <cstdio>
 #include <iostream>
@@ -73,6 +75,6 @@ std::string get_bluetooth_mac_address() {
     ss << formatNumber((macAddrLower & 0xFF) + 1);  // Is BT address really always +1 from the base one in file?
 
     macAddress = ss.str();
-    printf("Bluetooth MAC: %s\n", macAddress.c_str());
+    logi("Bluetooth MAC: %s", macAddress.c_str());
     return macAddress;
 }

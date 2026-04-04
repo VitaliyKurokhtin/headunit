@@ -77,7 +77,7 @@ void mzd_gps2_start()
         return;
     }
 
-    printf("GPS service connection established.\n");
+    logi("GPS service connection established.");
 }
 
 bool mzd_gps2_get(GPSData& data)

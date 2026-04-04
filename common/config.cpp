@@ -1,3 +1,4 @@
+#define LOGTAG "config"
 #include <fstream>
 #include "hu_aap.h"
 #include "config.h"
@@ -44,7 +45,7 @@ void config::parseJson(json config_json)
     if (config_json["logLevel"].is_string())
     {
         std::string val = config_json["logLevel"];
-        if (val == "extra" || val == "verbose" || val == "debug" || val == "warning" || val == "error" || val == "none")
+        if (val == "extra" || val == "verbose" || val == "debug" || val == "info" || val == "warning" || val == "error" || val == "none")
             config::logLevel = val;
     }
     if (config_json["fps"].is_string())
@@ -54,7 +55,7 @@ void config::parseJson(json config_json)
             config::fps = val;
     }
     hu_log_set_level(config::logLevel);
-    printf("json config parsed\n");
+    logd("json config parsed");
 }
 
 json config::readConfigFile()
@@ -69,7 +70,7 @@ json config::readConfigFile()
             ifs >> config_json;
         }catch (...)
         {
-            printf("couldn't parse config file. possible corruption\n");
+            loge("couldn't parse config file. possible corruption");
             config_json = nullptr;
             ifs.close();
         }
@@ -77,7 +78,7 @@ json config::readConfigFile()
     }
     else
     {
-        printf("couldn't read config file. check permissions\n");
+        loge("couldn't read config file. check permissions");
     }
     return config_json;
 }
@@ -97,17 +98,17 @@ void config::writeConfigFile(json config_json)
     {
         out_file << std::setw(4) << config_json << std::endl;
         out_file.close();
-        printf("config file written\n");
+        logd("config file written");
     }
     else
     {
-        printf("couldn't write config file. check permissions\n");
+        loge("couldn't write config file. check permissions");
     }
 }
 
 void config::updateConfigString(std::string parameter, std::string value)
 {
-    printf("updating parameter [%s] = [%s]\n", parameter.c_str(), value.c_str());
+    logd("updating parameter [%s] = [%s]", parameter.c_str(), value.c_str());
     json config_json = readConfigFile();
     if (config_json == nullptr) return;
 
@@ -118,7 +119,7 @@ void config::updateConfigString(std::string parameter, std::string value)
 
 void config::updateConfigBool(std::string parameter, bool value)
 {
-    printf("updating parameter [%s] = [%s]\n", parameter.c_str(), value ? "true" : "false");
+    logd("updating parameter [%s] = [%s]", parameter.c_str(), value ? "true" : "false");
     json config_json = readConfigFile();
     if (config_json == nullptr) return;
 

@@ -57,7 +57,7 @@ CommandServer::CommandServer(ICommandServerCallbacks &callbacks)
         json result;
         resp.body << std::setw(4) << result;
 
-        printf("Got /takeVideoFocus call. response:\n%s\n", resp.body.str().c_str());
+        logd("Got /takeVideoFocus call. response:\n%s", resp.body.str().c_str());
 
         AddCORSHeaders(resp);
     });

@@ -32,6 +32,7 @@ extern int ena_log_aap_send;
 extern int ena_log_extra;
 extern int ena_log_verbo;
 extern int ena_log_debug;
+extern int ena_log_info_;
 extern int ena_log_warni;
 extern int ena_log_error;
 
@@ -47,7 +48,7 @@ typedef unsigned char byte;
   #define ANDROID_LOG_DEFAULT 1
   #define ANDROID_LOG_VERBOSE 2
   #define ANDROID_LOG_DEBUG   3
-    // INFO       4
+  #define ANDROID_LOG_INFO    4
   #define ANDROID_LOG_WARN    5
   #define ANDROID_LOG_ERROR   6
     // FATAL      7
@@ -57,6 +58,7 @@ typedef unsigned char byte;
 #define hu_LOG_EXT   ANDROID_LOG_DEFAULT
 #define hu_LOG_VER   ANDROID_LOG_VERBOSE
 #define hu_LOG_DEB   ANDROID_LOG_DEBUG
+#define hu_LOG_INF   ANDROID_LOG_INFO
 #define hu_LOG_WAR   ANDROID_LOG_WARN
 #define hu_LOG_ERR   ANDROID_LOG_ERROR
 
@@ -65,6 +67,7 @@ typedef unsigned char byte;
 #define  logx(...)
 #define  logv(...)
 #define  logd(...)
+#define  logi(...)
 #define  logw(...)
 #define  loge(...)
 
@@ -76,6 +79,7 @@ typedef unsigned char byte;
 #define  logx(...)  do { if (ena_log_extra) hu_log(hu_LOG_EXT,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
 #define  logv(...)  do { if (ena_log_verbo) hu_log(hu_LOG_VER,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
 #define  logd(...)  do { if (ena_log_debug) hu_log(hu_LOG_DEB,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
+#define  logi(...)  do { if (ena_log_info_) hu_log(hu_LOG_INF,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
 #define  logw(...)  do { if (ena_log_warni) hu_log(hu_LOG_WAR,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
 #define  loge(...)  do { if (ena_log_error) hu_log(hu_LOG_ERR,__FILE__ ":" STR(__LINE__),__FUNCTION__,__VA_ARGS__); } while(0)
 
