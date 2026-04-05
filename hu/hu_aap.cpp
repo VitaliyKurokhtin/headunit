@@ -856,13 +856,13 @@
     return (0);
   }
 
-  int HUServer::hu_handle_MediaDataWithTimestamp (int chan, std::shared_ptr<std::vector<uint8_t>> pool_buf, int offset, int len, bool is_last_frame) {
+  int HUServer::hu_handle_MediaDataWithTimestamp (int chan, std::shared_ptr<std::vector<uint8_t>> payload_buf, int offset, int len, bool is_last_frame) {
 
-    byte * buf = pool_buf->data() + offset;
+    byte * buf = payload_buf->data() + offset;
     uint64_t timestamp = read_be64(buf);
     logd("Media timestamp %s %llu", chan_get(chan), timestamp);
 
-    int ret = callbacks.MediaPacket(chan, timestamp, std::move(pool_buf), offset + 8, len - 8);
+    int ret = callbacks.MediaPacket(chan, timestamp, std::move(payload_buf), offset + 8, len - 8);
     if (ret < 0)
     {
       return ret;
@@ -873,9 +873,9 @@
     return 0;
   }
 
-  int HUServer::hu_handle_MediaData(int chan, std::shared_ptr<std::vector<uint8_t>> pool_buf, int offset, int len, bool is_last_frame) {
+  int HUServer::hu_handle_MediaData(int chan, std::shared_ptr<std::vector<uint8_t>> payload_buf, int offset, int len, bool is_last_frame) {
 
-    int ret = callbacks.MediaPacket(chan, 0, std::move(pool_buf), offset, len);
+    int ret = callbacks.MediaPacket(chan, 0, std::move(payload_buf), offset, len);
     if (ret < 0)
     {
       return ret;
@@ -1373,9 +1373,9 @@
 
     // Read frame header into pool buffer
     auto recv_buf = recv_pool.acquire();
-    byte* enc_buf = recv_buf->data();
+    byte* recv_buf_bytes = recv_buf->data();
 
-    have_len = hu_aap_tra_recv (enc_buf, min_size_hdr, tmo, data_available);
+    have_len = hu_aap_tra_recv (recv_buf_bytes, min_size_hdr, tmo, data_available);
     if (have_len == 0)
       return 0;
 
@@ -1386,11 +1386,11 @@
 
     if (ena_log_verbo) {
       logd ("Recv have_len: %d", have_len);
-      hex_dump ("LR: ", 16, enc_buf, have_len);
+      hex_dump ("LR: ", 16, recv_buf_bytes, have_len);
     }
-    int chan = (int) enc_buf [0];
-    int flags = enc_buf [1];
-    int frame_len = be16toh(*((uint16_t*)&enc_buf[2]));
+    int chan = (int) recv_buf_bytes [0];
+    int flags = recv_buf_bytes [1];
+    int frame_len = be16toh(*((uint16_t*)&recv_buf_bytes[2]));
 
     logd("%s frame flags %i len %i", chan_get(chan), flags, frame_len);
 
@@ -1411,7 +1411,7 @@
     while(remaining_bytes_in_frame > 0)
     {
       logd("Getting more %i", remaining_bytes_in_frame);
-      int got_bytes = hu_aap_tra_recv (&enc_buf[have_len], remaining_bytes_in_frame, tmo);
+      int got_bytes = hu_aap_tra_recv (&recv_buf_bytes[have_len], remaining_bytes_in_frame, tmo);
       if (got_bytes < 0) {
         loge ("Recv got_bytes: %d", got_bytes);
         return (-1);
@@ -1420,61 +1420,163 @@
       remaining_bytes_in_frame -= got_bytes;
     }
 
-    bool is_stream = (chan == AA_CH_VID || chan == AA_CH_AUD || chan == AA_CH_AU1 || chan == AA_CH_AU2)
-                     && !(flags & HU_FRAME_CONTROL_MESSAGE);
+    bool is_media_channel = (chan == AA_CH_VID || chan == AA_CH_AUD || chan == AA_CH_AU1 || chan == AA_CH_AU2);
+    bool reassembly_needed = !(has_first && has_last) && !is_media_channel;
+    bool is_encrypted = (flags & HU_FRAME_ENCRYPTED) != 0;
 
-    // Non-stream channels must always be single-frame
-    if (!is_stream && !(has_first && has_last))
+    ReassemblyBuffer* rb = nullptr; // Pointer to reassembly buffer for this channel if needed
+    std::shared_ptr<std::vector<uint8_t>> payload_buf; // Buffer to hold decrypted/reassembled payload for dispatch
+    int payload_len = 0; // Length of valid data in payload_buf starting from payload_offset
+
+    if (reassembly_needed)
     {
-      loge ("Unexpected multi-frame packet on chan %s, flags %i len %i", chan_get(chan), flags, frame_len);
-      return 0;
+      if (has_first)
+      {
+        // This is the first frame of a multi-frame message, allocate reassembly buffer based on total size in header
+        int total_size = be32toh(*((uint32_t*)&recv_buf_bytes[4]));
+        if (total_size > MAX_REASSEMBLY_SIZE)
+        {
+          loge ("Reassembly too large on chan %s: %d bytes", chan_get(chan), total_size);
+
+          if (is_encrypted)
+          {
+            auto discard = recv_pool.acquire();
+            hu_ssl_decrypt(&recv_buf_bytes[header_size], frame_len, discard->data(), discard->size());
+          }
+
+          return 0;
+        }
+
+        logd ("Reassembly start on chan %s: total_size %d", chan_get(chan), total_size);
+
+        rb = &reassembly[chan];
+        rb->buf = std::make_shared<std::vector<byte>>(total_size);
+        rb->total_size = total_size;
+        rb->received = 0;
+
+        payload_buf = rb->buf;
+      }
+      else
+      {
+        // This is a continuation frame, find existing reassembly buffer for this channel and append to it
+        auto it = reassembly.find(chan);
+        if (it == reassembly.end())
+        {
+          loge ("Reassembly continuation on chan %s but no buffer", chan_get(chan));
+
+          if (is_encrypted)
+          {
+            auto discard = recv_pool.acquire();
+            hu_ssl_decrypt(&recv_buf_bytes[header_size], frame_len, discard->data(), discard->size());
+          }
+
+          return 0;
+        }
+
+        rb = &it->second;
+        payload_buf = rb->buf;
+        payload_len = rb->received;
+
+        logd ("Reassembly continuation on chan %s: %d/%d bytes so far", chan_get(chan), rb->received, rb->total_size);
+      }
     }
 
-    // Decrypt or use received payload directly
-    std::shared_ptr<BufferPool::Buffer> pool_buf;
-    int payload_offset;
-    int payload_len;
-
-    if (flags & HU_FRAME_ENCRYPTED)
+    int payload_offset = 0; // Offset in payload_buf where valid data starts (accounts for any header bytes if data is not encrypted)
+    if (is_encrypted)
     {
-      pool_buf = recv_pool.acquire();
-      int bytes_read = hu_ssl_decrypt(&enc_buf[header_size], frame_len, pool_buf->data(), pool_buf->size());
+      if (!reassembly_needed)
+        payload_buf = recv_pool.acquire();
+
+      // Decrypt directly into final buffer (reassembly buffer for multi-frame messages, pool buffer for single-frame messages and media channel frames)
+      int bytes_read = hu_ssl_decrypt(&recv_buf_bytes[header_size], frame_len, &payload_buf->data()[payload_len], payload_buf->size() - payload_len);
       if (bytes_read <= 0) {
         loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
+        if (reassembly_needed)
+        {
+          // If decryption fails, discard any existing reassembly buffer for this channel to avoid leaving stale buffers around
+          reassembly.erase(chan);
+        }
+
         return (-1);
       }
-      payload_offset = 0;
-      payload_len = bytes_read;
-      if (ena_log_verbo)
-        logd ("hu_ssl_decrypt() payload_len: %d", payload_len);
+
+      if (reassembly_needed)
+      {
+        rb->received += bytes_read;
+        payload_len = rb->received;
+      }
+      else
+      {
+        payload_len = bytes_read;
+      }
+    }
+    else if (reassembly_needed)
+    {
+      // multi-frame non-encrypted message, copy from recv buffer to reassembly buffer
+      memcpy(&payload_buf->data()[payload_len], &recv_buf_bytes[header_size], frame_len);
+      rb->received += frame_len;
+      payload_len = rb->received;
+
+      logd("Reassembly on chan %s: %d bytes added", chan_get(chan), payload_len);
     }
     else
     {
-      // Unencrypted: use recv_buf directly, no copy needed
-      pool_buf = std::move(recv_buf);
+      // Single-frame non-encrypted message, just use recv buffer directly without copying
+      payload_buf = std::move(recv_buf);
       payload_offset = header_size;
       payload_len = frame_len;
     }
 
-    // Stream channels: log partial frames for diagnostics
-    if (is_stream && !(has_first && has_last))
-      logd ("%s partial frame: first=%d last=%d len=%d", chan_get(chan), has_first, has_last, payload_len);
+    logv ("payload_len: %d", payload_len);
 
-    // Dispatch
-    if (has_first)
+    if (reassembly_needed)
     {
-      // First frame (or single frame) contains [msg_type:2][...payload data...]
-      if (payload_len >= 2)
+      if (!has_last)
       {
-        uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(pool_buf->data() + payload_offset));
-        return iaap_msg_process (chan, msg_type, std::move(pool_buf), payload_offset + 2, payload_len - 2, has_last);
+        // Not last frame, wait for more frames to arrive before dispatching
+        return 0;
       }
-      return 0;
+
+      logd ("Reassembly complete on chan %s: %d bytes", chan_get(chan), payload_len);
+      reassembly.erase(chan);
+    }
+
+    if (is_media_channel && !(has_first && has_last))
+      logd ("%s partial media frame: first=%d last=%d len=%d", chan_get(chan), has_first, has_last, payload_len);
+
+    if (is_media_channel)
+    {
+      if (has_first)
+      {
+        // First frame of a media message, expect message type in header and dispatch immediately without reassembly even if multi-frame to minimize latency
+        if (payload_len < 2)
+        {
+          // Not enough data for message type, discard frame
+          loge ("%s media frame too short for message type: len %d", chan_get(chan), payload_len);
+          return 0;
+        }
+
+        uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(payload_buf->data() + payload_offset));
+        return iaap_msg_process (chan, msg_type, std::move(payload_buf), payload_offset + 2, payload_len - 2, has_last);
+      }
+      else
+      {
+        // Continuation frame of a media message, dispatch immediately without reassembly
+        return iaap_msg_process (chan, static_cast<uint16_t>(HU_PROTOCOL_MESSAGE::MediaData), std::move(payload_buf), payload_offset, payload_len, has_last);
+      }
     }
     else
     {
-      // Continuation frame: raw media data, no msg_type/timestamp header
-      return iaap_msg_process (chan, static_cast<uint16_t>(HU_PROTOCOL_MESSAGE::MediaData), std::move(pool_buf), payload_offset, payload_len, has_last);
+      // Only single frame or reassembled multi-frame non-media messages reach here, all of which are expected to have message type in first 2 bytes of payload
+      if (payload_len < 2)
+      {
+        // Not enough data for message type, discard frame
+        loge ("%s frame too short for message type: len %d", chan_get(chan), payload_len);
+        return 0;
+      }
+
+      uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(payload_buf->data() + payload_offset));
+      return iaap_msg_process (chan, msg_type, std::move(payload_buf), payload_offset + 2, payload_len - 2, has_last);
     }
   }
 /*

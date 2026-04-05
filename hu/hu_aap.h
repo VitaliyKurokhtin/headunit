@@ -7,6 +7,7 @@
 #include <functional>
 #include <thread>
 #include <mutex>
+#include <map>
 #include <memory>
 
 // Channels ( or Service IDs)
@@ -23,6 +24,7 @@
 #define AA_CH_NOT 10
 #define AA_CH_NAVI 11
 #define AA_CH_MAX 256
+#define MAX_REASSEMBLY_SIZE 1048576  // 1MB cap for non-stream multi-frame messages
 
 enum HU_STATE
 {
@@ -228,6 +230,14 @@ protected:
   // Recv path buffers (used only on hu_thread)
   BufferPool recv_pool{MAX_FRAME_SIZE, 13, false, "recv"};
   int32_t channel_session_id[AA_CH_MAX] = {0};
+
+  // Non-stream multi-frame reassembly (used only on hu_thread)
+  struct ReassemblyBuffer {
+    std::shared_ptr<std::vector<uint8_t>> buf;
+    int total_size = 0;
+    int received = 0;
+  };
+  std::map<int, ReassemblyBuffer> reassembly;
 
   // Send path buffers (protected by send_mutex, callable from any thread)
   std::mutex    send_mutex;
