@@ -69,15 +69,18 @@ void AlsaWriter::process(AudioCommand& cmd)
         snd_pcm_prepare(handle_);
     }
 
-    snd_pcm_sframes_t frames = snd_pcm_writei(handle_, pcm_data, framecount);
-    if (frames < 0) {
-        frames = snd_pcm_recover(handle_, frames, 1);
-        if (frames >= 0) {
-            frames = snd_pcm_writei(handle_, pcm_data, framecount);
+    snd_pcm_sframes_t written = 0;
+    while (written < framecount) {
+        snd_pcm_sframes_t frames = snd_pcm_writei(handle_, pcm_data + snd_pcm_frames_to_bytes(handle_, written), framecount - written);
+        if (frames < 0) {
+            frames = snd_pcm_recover(handle_, frames, 1);
+            if (frames < 0) {
+                loge("Write error: %s\n", snd_strerror(frames));
+                break;
+            }
+            continue;
         }
-    }
-    if (frames >= 0 && frames < framecount) {
-        loge("Short write (expected %i, wrote %i)\n", (int)framecount, (int)frames);
+        written += frames;
     }
 }
 
