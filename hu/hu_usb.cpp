@@ -379,7 +379,7 @@ int HUTransportStreamUSB::Start(bool waitForDevice) {
             loge("Error getting descriptor");
             continue;
         }
-        logw("Opening device 0x%04x : 0x%04x", desc.idVendor, desc.idProduct);
+        logd("Opening device 0x%04x : 0x%04x", desc.idVendor, desc.idProduct);
         libusb_device_handle* handle = nullptr;
         usb_err = libusb_open(devices[i], &handle);
         if (usb_err < 0)
@@ -396,7 +396,7 @@ int HUTransportStreamUSB::Start(bool waitForDevice) {
             {
                 continue;
             }
-            logw("Device 0x%04x : 0x%04x responded with protocol ver %u", desc.idVendor, desc.idProduct, oap_proto_ver);
+            logd("Device 0x%04x : 0x%04x responded with protocol ver %u", desc.idVendor, desc.idProduct, oap_proto_ver);
             usb_err = iusb_control_transfer(handle, USB_DIR_OUT | USB_TYPE_VENDOR, ACC_REQ_SEND_STRING, 0, ACC_IDX_MAN, AAP_VAL_MAN, sizeof(AAP_VAL_MAN), 1000);
             if (usb_err < 0)
             {
@@ -454,7 +454,7 @@ int HUTransportStreamUSB::Start(bool waitForDevice) {
         //Try right away just incase
         if ((iusb_dev_hndl = find_oap_device()) == nullptr)
         {
-            logw("Wating for the device to reconnect");
+            logd("Waiting for the device to reconnect");
             //Give it some time to reconnect
             wait_for_device_connection();
         }
@@ -475,7 +475,7 @@ int HUTransportStreamUSB::Start(bool waitForDevice) {
     }
   }
 
-  logw("Found OAP Device");
+  logd("Found OAP Device");
 
   int usb_err = libusb_claim_interface (iusb_dev_hndl, 0);
   if (usb_err) {
@@ -483,7 +483,7 @@ int HUTransportStreamUSB::Start(bool waitForDevice) {
     Stop();
     return (-1);
   }
-  logw ("OK libusb_claim_interface usb_err: %d (%s)", usb_err, iusb_error_get (usb_err));
+  logd ("OK libusb_claim_interface usb_err: %d (%s)", usb_err, iusb_error_get (usb_err));
 
   libusb_device* got_device = libusb_get_device(iusb_dev_hndl);
 
@@ -497,7 +497,7 @@ int HUTransportStreamUSB::Start(bool waitForDevice) {
   }
 
   int num_int = config->bNumInterfaces;                               // Get number of interfaces
-  logw ("Done get_config_descriptor config: %p  num_int: %d", config, num_int);
+  logd ("Done get_config_descriptor config: %p  num_int: %d", config, num_int);
 
   for (int idx = 0; idx < num_int && (iusb_ep_in < 0 || iusb_ep_out < 0); idx ++)
   {                              // For all interfaces...
@@ -522,14 +522,14 @@ int HUTransportStreamUSB::Start(bool waitForDevice) {
             {
               if (iusb_ep_in < 0) {
                 iusb_ep_in = ep_add;                                   // Set input endpoint
-                logw ("iusb_ep_in: 0x%02x", iusb_ep_in);
+                logd ("iusb_ep_in: 0x%02x", iusb_ep_in);
               }
             }
             else
             {
               if (iusb_ep_out < 0) {
                 iusb_ep_out = ep_add;                                  // Set output endpoint
-                logw ("iusb_ep_out: 0x%02x", iusb_ep_out);
+                logd ("iusb_ep_out: 0x%02x", iusb_ep_out);
               }
             }
         }

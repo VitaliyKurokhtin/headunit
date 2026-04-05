@@ -405,7 +405,7 @@ int wait_for_device_connection(){
 			   select() ensured that this will not block. */
 			dev = udev_monitor_receive_device(mon);
 			if (dev) {
-				logw("udev device %sed | node:%s, subsystem:%s, devtype:%s\n",
+				logd("udev device %sed | node:%s, subsystem:%s, devtype:%s\n",
                                         udev_device_get_action(dev),
                                         udev_device_get_devnode(dev),
                                         udev_device_get_subsystem(dev),

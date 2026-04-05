@@ -592,7 +592,7 @@
     std::string carBTAddress = callbacks.GetCarBluetoothAddress();
     if (carBTAddress.size() > 0)
     {
-        logw("Found BT address %s. Exposing Bluetooth service", carBTAddress.c_str());
+        logd("Found BT address %s. Exposing Bluetooth service", carBTAddress.c_str());
         HU::ChannelDescriptor* btChannel = carInfo.add_channels();
         btChannel->set_channel_id(AA_CH_BT);
         {
@@ -688,7 +688,7 @@
     if (!request.ParseFromArray(buf, len))
       loge ("AudioFocusRequest Focus Request");
     else
-      logw ("AudioFocusRequest Focus Request %s: %d", chan_get(chan), request.focus_type());
+      logd ("AudioFocusRequest Focus Request %s: %d", chan_get(chan), request.focus_type());
 
     callbacks.AudioFocusRequest(chan, request);
     return 0;
@@ -1347,7 +1347,7 @@
     }
 
 
-    logw("Starting HU thread");
+    logd("Starting HU thread");
     hu_thread_quit_flag = false;
     hu_thread = std::thread([this] { this->hu_thread_main(); });
 
@@ -1355,7 +1355,7 @@
         return hu_aap_enc_send(retry, chan, buf, len, tmo);
     }));
     sender_thread->start();
-    logw("Started sender thread");
+    logd("Started sender thread");
 
 
     return (0);
