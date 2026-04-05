@@ -53,7 +53,7 @@ static int get_data_errors_in_a_row = 0;
 void GPSLDSControl::ReadStatus(const int32_t& commandReply, const int32_t& status)
 {
     //not sure what this does yet
-    logw("Read status changed commandReply %i status %i\n", commandReply, status);
+    logd("Read status changed commandReply %i status %i\n", commandReply, status);
 }
 
 
