@@ -283,6 +283,10 @@ protected:
   int hu_aap_unenc_send (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);                   // Acquires send_mutex
   int hu_aap_unenc_send_locked (int retry, int chan, byte * buf, int len, int overrideTimeout = -1);           // Caller must hold send_mutex
 
+  void discard_encrypted(byte* encrypted_data, int encrypted_len);
+  int  decrypt_into(byte* encrypted_data, int encrypted_len, std::shared_ptr<std::vector<uint8_t>>& target, int offset);
+  int  dispatch_message(int chan, std::shared_ptr<std::vector<uint8_t>> payload_buf, int payload_offset, int payload_len, bool has_last);
+
   int hu_aap_recv_process (int tmo, bool data_available = false);                  // Used by          hu_mai,  hu_jni     // Process 1 encrypted receive message set:
                                                                                                                           // Respond to decrypted message
   virtual int hu_aap_enc_send_message(int retry, int chan, uint16_t messageCode, const google::protobuf::MessageLite& message, int overrideTimeout = -1) override;

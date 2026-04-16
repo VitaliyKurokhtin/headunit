@@ -1361,6 +1361,28 @@
     return (0);
   }
 
+  void HUServer::discard_encrypted(byte* encrypted_data, int encrypted_len) {
+    // Feed encrypted data through SSL decrypt to keep state machine in sync, discard the plaintext
+    auto discard = recv_pool.acquire();
+    hu_ssl_decrypt(encrypted_data, encrypted_len, discard->data(), discard->size());
+  }
+
+  int HUServer::decrypt_into(byte* encrypted_data, int encrypted_len,
+                              std::shared_ptr<std::vector<uint8_t>>& target, int offset) {
+    return hu_ssl_decrypt(encrypted_data, encrypted_len,
+                          &target->data()[offset], target->size() - offset);
+  }
+
+  int HUServer::dispatch_message(int chan, std::shared_ptr<std::vector<uint8_t>> payload_buf,
+                                  int payload_offset, int payload_len, bool has_last) {
+    if (payload_len < 2) {
+      loge ("%s frame too short for message type: len %d", chan_get(chan), payload_len);
+      return 0;
+    }
+    uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(payload_buf->data() + payload_offset));
+    return iaap_msg_process(chan, msg_type, std::move(payload_buf), payload_offset + 2, payload_len - 2, has_last);
+  }
+
   int HUServer::hu_aap_recv_process (int tmo, bool data_available) {
     if (iaap_state != hu_STATE_STARTED && iaap_state != hu_STATE_STARTIN) {
       loge ("CHECK: iaap_state: %d (%s)", iaap_state, state_get (iaap_state));
@@ -1421,163 +1443,115 @@
     }
 
     bool is_media_channel = (chan == AA_CH_VID || chan == AA_CH_AUD || chan == AA_CH_AU1 || chan == AA_CH_AU2);
-    bool reassembly_needed = !(has_first && has_last) && !is_media_channel;
     bool is_encrypted = (flags & HU_FRAME_ENCRYPTED) != 0;
+    byte* frame_data = &recv_buf_bytes[header_size];
 
-    ReassemblyBuffer* rb = nullptr; // Pointer to reassembly buffer for this channel if needed
-    std::shared_ptr<std::vector<uint8_t>> payload_buf; // Buffer to hold decrypted/reassembled payload for dispatch
-    int payload_len = 0; // Length of valid data in payload_buf starting from payload_offset
-
-    if (reassembly_needed)
-    {
-      if (has_first)
-      {
-        // This is the first frame of a multi-frame message, allocate reassembly buffer based on total size in header
-        int total_size = be32toh(*((uint32_t*)&recv_buf_bytes[4]));
-        if (total_size > MAX_REASSEMBLY_SIZE)
-        {
-          loge ("Reassembly too large on chan %s: %d bytes", chan_get(chan), total_size);
-
-          if (is_encrypted)
-          {
-            auto discard = recv_pool.acquire();
-            hu_ssl_decrypt(&recv_buf_bytes[header_size], frame_len, discard->data(), discard->size());
-          }
-
-          return 0;
-        }
-
-        logd ("Reassembly start on chan %s: total_size %d", chan_get(chan), total_size);
-
-        rb = &reassembly[chan];
-        rb->buf = std::make_shared<std::vector<byte>>(total_size);
-        rb->total_size = total_size;
-        rb->received = 0;
-
-        payload_buf = rb->buf;
-      }
-      else
-      {
-        // This is a continuation frame, find existing reassembly buffer for this channel and append to it
-        auto it = reassembly.find(chan);
-        if (it == reassembly.end())
-        {
-          loge ("Reassembly continuation on chan %s but no buffer", chan_get(chan));
-
-          if (is_encrypted)
-          {
-            auto discard = recv_pool.acquire();
-            hu_ssl_decrypt(&recv_buf_bytes[header_size], frame_len, discard->data(), discard->size());
-          }
-
-          return 0;
-        }
-
-        rb = &it->second;
-        payload_buf = rb->buf;
-        payload_len = rb->received;
-
-        logd ("Reassembly continuation on chan %s: %d/%d bytes so far", chan_get(chan), rb->received, rb->total_size);
-      }
-    }
-
-    int payload_offset = 0; // Offset in payload_buf where valid data starts (accounts for any header bytes if data is not encrypted)
-    if (is_encrypted)
-    {
-      if (!reassembly_needed)
-        payload_buf = recv_pool.acquire();
-
-      // Decrypt directly into final buffer (reassembly buffer for multi-frame messages, pool buffer for single-frame messages and media channel frames)
-      int bytes_read = hu_ssl_decrypt(&recv_buf_bytes[header_size], frame_len, &payload_buf->data()[payload_len], payload_buf->size() - payload_len);
-      if (bytes_read <= 0) {
-        loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
-        if (reassembly_needed)
-        {
-          // If decryption fails, discard any existing reassembly buffer for this channel to avoid leaving stale buffers around
-          reassembly.erase(chan);
-        }
-
-        return (-1);
-      }
-
-      if (reassembly_needed)
-      {
-        rb->received += bytes_read;
-        payload_len = rb->received;
-      }
-      else
-      {
-        payload_len = bytes_read;
-      }
-    }
-    else if (reassembly_needed)
-    {
-      // multi-frame non-encrypted message, copy from recv buffer to reassembly buffer
-      memcpy(&payload_buf->data()[payload_len], &recv_buf_bytes[header_size], frame_len);
-      rb->received += frame_len;
-      payload_len = rb->received;
-
-      logd("Reassembly on chan %s: %d bytes added", chan_get(chan), payload_len);
-    }
-    else
-    {
-      // Single-frame non-encrypted message, just use recv buffer directly without copying
-      payload_buf = std::move(recv_buf);
-      payload_offset = header_size;
-      payload_len = frame_len;
-    }
-
-    logv ("payload_len: %d", payload_len);
-
-    if (reassembly_needed)
-    {
-      if (!has_last)
-      {
-        // Not last frame, wait for more frames to arrive before dispatching
-        return 0;
-      }
-
-      logd ("Reassembly complete on chan %s: %d bytes", chan_get(chan), payload_len);
-      reassembly.erase(chan);
-    }
-
-    if (is_media_channel && !(has_first && has_last))
-      logd ("%s partial media frame: first=%d last=%d len=%d", chan_get(chan), has_first, has_last, payload_len);
-
+    // ---- Flow 1: Streamed media -- dispatch each frame immediately, no reassembly ----
     if (is_media_channel)
     {
-      if (has_first)
-      {
-        // First frame of a media message, expect message type in header and dispatch immediately without reassembly even if multi-frame to minimize latency
-        if (payload_len < 2)
-        {
-          // Not enough data for message type, discard frame
-          loge ("%s media frame too short for message type: len %d", chan_get(chan), payload_len);
-          return 0;
-        }
+      std::shared_ptr<std::vector<uint8_t>> payload_buf;
+      int payload_offset = 0, payload_len = 0;
 
-        uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(payload_buf->data() + payload_offset));
-        return iaap_msg_process (chan, msg_type, std::move(payload_buf), payload_offset + 2, payload_len - 2, has_last);
+      if (is_encrypted) {
+        payload_buf = recv_pool.acquire();
+        int bytes_read = decrypt_into(frame_data, frame_len, payload_buf, 0);
+        if (bytes_read <= 0) {
+          loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
+          return (-1);
+        }
+        payload_len = bytes_read;
+      } else {
+        payload_buf = std::move(recv_buf);
+        payload_offset = header_size;
+        payload_len = frame_len;
       }
-      else
-      {
-        // Continuation frame of a media message, dispatch immediately without reassembly
-        return iaap_msg_process (chan, static_cast<uint16_t>(HU_PROTOCOL_MESSAGE::MediaData), std::move(payload_buf), payload_offset, payload_len, has_last);
-      }
+
+      if (!(has_first && has_last))
+        logd ("%s partial media frame: first=%d last=%d len=%d", chan_get(chan), has_first, has_last, payload_len);
+
+      if (has_first)
+        return dispatch_message(chan, std::move(payload_buf), payload_offset, payload_len, has_last);
+
+      // Continuation frame: synthetic MediaData msg_type, no 2-byte msg_type header to strip
+      return iaap_msg_process(chan, static_cast<uint16_t>(HU_PROTOCOL_MESSAGE::MediaData),
+                              std::move(payload_buf), payload_offset, payload_len, has_last);
     }
-    else
+
+    // ---- Flow 2: Single-frame non-media message ----
+    if (has_first && has_last)
     {
-      // Only single frame or reassembled multi-frame non-media messages reach here, all of which are expected to have message type in first 2 bytes of payload
-      if (payload_len < 2)
-      {
-        // Not enough data for message type, discard frame
-        loge ("%s frame too short for message type: len %d", chan_get(chan), payload_len);
+      std::shared_ptr<std::vector<uint8_t>> payload_buf;
+      int payload_offset = 0, payload_len = 0;
+
+      if (is_encrypted) {
+        payload_buf = recv_pool.acquire();
+        int bytes_read = decrypt_into(frame_data, frame_len, payload_buf, 0);
+        if (bytes_read <= 0) {
+          loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
+          return (-1);
+        }
+        payload_len = bytes_read;
+      } else {
+        payload_buf = std::move(recv_buf);
+        payload_offset = header_size;
+        payload_len = frame_len;
+      }
+
+      return dispatch_message(chan, std::move(payload_buf), payload_offset, payload_len, true);
+    }
+
+    // ---- Flow 3: Multi-frame assembly (non-media) ----
+    ReassemblyBuffer* rb;
+
+    if (has_first) {
+      int total_size = be32toh(*((uint32_t*)&recv_buf_bytes[4]));
+      if (total_size > MAX_REASSEMBLY_SIZE) {
+        loge ("Reassembly too large on chan %s: %d bytes", chan_get(chan), total_size);
+        if (is_encrypted) discard_encrypted(frame_data, frame_len);
         return 0;
       }
-
-      uint16_t msg_type = be16toh(*reinterpret_cast<uint16_t*>(payload_buf->data() + payload_offset));
-      return iaap_msg_process (chan, msg_type, std::move(payload_buf), payload_offset + 2, payload_len - 2, has_last);
+      logd ("Reassembly start on chan %s: total_size %d", chan_get(chan), total_size);
+      rb = &reassembly[chan];
+      rb->buf = std::make_shared<std::vector<byte>>(total_size);
+      rb->total_size = total_size;
+      rb->received = 0;
+    } else {
+      auto it = reassembly.find(chan);
+      if (it == reassembly.end()) {
+        loge ("Reassembly continuation on chan %s but no buffer", chan_get(chan));
+        if (is_encrypted) discard_encrypted(frame_data, frame_len);
+        return 0;
+      }
+      rb = &it->second;
+      logd ("Reassembly continuation on chan %s: %d/%d bytes so far", chan_get(chan), rb->received, rb->total_size);
     }
+
+    // Append payload to reassembly buffer
+    if (is_encrypted) {
+      int bytes_read = decrypt_into(frame_data, frame_len, rb->buf, rb->received);
+      if (bytes_read <= 0) {
+        loge ("hu_ssl_decrypt() failed: %d  errno: %d", bytes_read, errno);
+        reassembly.erase(chan);
+        return (-1);
+      }
+      rb->received += bytes_read;
+      logd("Reassembly on chan %s: %d decrypted bytes added", chan_get(chan), bytes_read);
+    } else {
+      memcpy(&rb->buf->data()[rb->received], frame_data, frame_len);
+      rb->received += frame_len;
+      logd("Reassembly on chan %s: %d non-encrypted bytes added", chan_get(chan), frame_len);
+    }
+
+    if (!has_last)
+      return 0; // Wait for more frames
+
+    // Assembly complete
+    int payload_len = rb->received;
+    auto payload_buf = std::move(rb->buf);
+    logd ("Reassembly complete on chan %s: %d bytes", chan_get(chan), payload_len);
+    reassembly.erase(chan);
+
+    return dispatch_message(chan, std::move(payload_buf), 0, payload_len, true);
   }
 /*
 */

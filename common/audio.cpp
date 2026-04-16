@@ -81,6 +81,9 @@ void AlsaWriter::process(AudioCommand& cmd)
             continue;
         }
         written += frames;
+        if (written < framecount) {
+            logw("%s: short write: %ld of %ld frames\n", name_.c_str(), (long)written, (long)framecount);
+        }
     }
 }
 
